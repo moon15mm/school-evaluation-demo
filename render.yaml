@@ -1,8 +1,9 @@
 services:
   - type: web
     name: school-evaluation-demo
-    env: python
+    runtime: python
     plan: free
+    healthCheckPath: /api/health
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
