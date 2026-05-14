@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 
 from app.core.models import ImpactRecord
-from app.core.reporting import _draw_rtl, _para, official_report_header, register_arabic_fonts, section_divider
+from app.core.reporting import _para, _rtl, official_report_header, register_arabic_fonts, section_divider
 
 
 def impact_level_label(value: str) -> str:
@@ -149,7 +149,7 @@ def _impact_chart(record: ImpactRecord, normal_font: str, bold_font: str):
 
     drawing.add(Rect(0, 0, width, height, fillColor=colors.white, strokeColor=grid, strokeWidth=0.7))
     drawing.add(Rect(0, height - 32, width, 32, fillColor=teal_dark, strokeColor=teal_dark))
-    drawing.add(String(width / 2, height - 22, "مؤشر الأثر الرقمي", textAnchor="middle", fontName=bold_font, fontSize=13, fillColor=colors.white))
+    drawing.add(String(width / 2, height - 22, _rtl("مؤشر الأثر الرقمي"), textAnchor="middle", fontName=bold_font, fontSize=13, fillColor=colors.white))
 
     chart_left = 76
     chart_bottom = 38
@@ -165,16 +165,16 @@ def _impact_chart(record: ImpactRecord, normal_font: str, bold_font: str):
     after_width = (after / 100) * chart_width
     drawing.add(Rect(chart_left, chart_bottom + 52, before_width, 18, fillColor=pale, strokeColor=gold))
     drawing.add(Rect(chart_left, chart_bottom + 18, after_width, 18, fillColor=teal, strokeColor=teal))
-    drawing.add(String(chart_left - 12, chart_bottom + 57, "قبل", textAnchor="end", fontName=bold_font, fontSize=10, fillColor=teal_dark))
-    drawing.add(String(chart_left - 12, chart_bottom + 23, "بعد", textAnchor="end", fontName=bold_font, fontSize=10, fillColor=teal_dark))
+    drawing.add(String(chart_left - 12, chart_bottom + 57, _rtl("قبل"), textAnchor="end", fontName=bold_font, fontSize=10, fillColor=teal_dark))
+    drawing.add(String(chart_left - 12, chart_bottom + 23, _rtl("بعد"), textAnchor="end", fontName=bold_font, fontSize=10, fillColor=teal_dark))
     drawing.add(String(chart_left + before_width + 8, chart_bottom + 56, f"{before:.1f}%", fontName=bold_font, fontSize=9, fillColor=teal_dark))
     drawing.add(String(chart_left + after_width + 8, chart_bottom + 22, f"{after:.1f}%", fontName=bold_font, fontSize=9, fillColor=teal_dark))
 
     badge_x = 378
     drawing.add(Rect(badge_x, chart_bottom + 13, 100, 74, fillColor=colors.HexColor("#eef8f5"), strokeColor=teal))
-    drawing.add(String(badge_x + 50, chart_bottom + 61, "نسبة التحسن", textAnchor="middle", fontName=bold_font, fontSize=10, fillColor=teal_dark))
+    drawing.add(String(badge_x + 50, chart_bottom + 61, _rtl("نسبة التحسن"), textAnchor="middle", fontName=bold_font, fontSize=10, fillColor=teal_dark))
     drawing.add(String(badge_x + 50, chart_bottom + 34, f"{gain:+.1f}%", textAnchor="middle", fontName=bold_font, fontSize=18, fillColor=teal))
-    drawing.add(String(badge_x + 50, chart_bottom + 17, impact_level_label(record.impact_level), textAnchor="middle", fontName=normal_font, fontSize=7, fillColor=colors.HexColor("#52616f")))
+    drawing.add(String(badge_x + 50, chart_bottom + 17, _rtl(impact_level_label(record.impact_level)), textAnchor="middle", fontName=normal_font, fontSize=7, fillColor=colors.HexColor("#52616f")))
 
     return KeepTogether([drawing, Spacer(1, 4)])
 
