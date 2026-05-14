@@ -24,6 +24,7 @@ from app.core.report_reference import build_school_report_profile
 from app.core.secretariat_agents import EvidenceSecretariat
 from app.core.live_council import LiveAgentCouncil
 from app.core.demo_seed import seed_demo_data
+from app.core.stage_rubrics import get_stage_rubric
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -471,6 +472,7 @@ def _build_evidence_dossier(visit_id: str) -> Path:
 @app.get("/api/workspace")
 def workspace() -> dict:
     latest = memory.latest_visit()
+    demo_stage = os.getenv("DEMO_STAGE", "secondary").strip().lower()
     active_visit = latest.model_dump() if latest else None
     if latest and not latest.external_readiness:
         active_visit["external_readiness"] = external_advisor.build(
@@ -482,6 +484,8 @@ def workspace() -> dict:
         ).model_dump()
     return {
         "has_memory": latest is not None,
+        "demo_stage": demo_stage,
+        "stage_rubric": get_stage_rubric(demo_stage),
         "active_visit": active_visit,
         "dashboard": _visit_dashboard(latest) if latest else None,
         "learning_profile": memory.learning_profile(),
@@ -491,6 +495,12 @@ def workspace() -> dict:
         "impact_advice": impact_agent.advise(latest, len(_impact_records_for_visit(latest.id, 200))) if latest else None,
         "council_events": [item.model_dump() for item in memory.latest_council_events(latest.id if latest else None, 30)],
     }
+
+
+@app.get("/api/demo/stage")
+def demo_stage_profile() -> dict:
+    demo_stage = os.getenv("DEMO_STAGE", "secondary").strip().lower()
+    return {"stage": demo_stage, "rubric": get_stage_rubric(demo_stage)}
 
 
 @app.get("/api/evidence/reviews")
