@@ -1,0 +1,24 @@
+{
+  "users": [
+    {
+      "username": "online_admin",
+      "display_name": "مدير نسخة العرض",
+      "role": "admin",
+      "salt": "eb7701cd390f3d630d37d56e1a771fdb",
+      "password_hash": "c1c494e58ee31d52fc9361141eb862d6bbe93b75f088f8877a3b82b6f5737f2a",
+      "can_write": true,
+      "can_manage_users": true,
+      "can_clear_data": true
+    },
+    {
+      "username": "demo",
+      "display_name": "مستخدم عرض تسويقي",
+      "role": "demo",
+      "salt": "7dbcb99868864eccc999c651edda6d63",
+      "password_hash": "4f970deeb4ef8a9f6b7cf2591b4a4e944c807c0dc0393d6605fbbb243e284f03",
+      "can_write": false,
+      "can_manage_users": false,
+      "can_clear_data": false
+    }
+  ]
+}

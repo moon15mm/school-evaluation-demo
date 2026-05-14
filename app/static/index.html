@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Autonomous School Evaluation & Improvement System</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260514-3" />
+  </head>
+  <body>
+    <section class="login-screen" id="loginScreen">
+      <form class="login-card" id="loginForm">
+        <p class="eyebrow">نظام دخول محلي</p>
+        <h2>تسجيل الدخول</h2>
+        <label>
+          اسم المستخدم
+          <input name="username" autocomplete="username" required />
+        </label>
+        <label>
+          كلمة المرور
+          <input name="password" type="password" autocomplete="current-password" required />
+        </label>
+        <button class="primary-btn" type="submit">دخول</button>
+        <div class="login-demo">
+          <strong>حساب العرض التسويقي</strong>
+          <span>demo / demo123</span>
+          <strong>حساب المدير</strong>
+          <span>يتم تسليمه لصاحب النسخة فقط</span>
+        </div>
+        <p id="loginMessage" class="login-message"></p>
+      </form>
+    </section>
+
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">مدير جودة مدرسي افتراضي</p>
+        <h1>Autonomous School Evaluation & Improvement System</h1>
+      </div>
+      <div class="topbar-actions">
+        <div class="status-pill" id="healthStatus">Localhost</div>
+        <div class="user-pill" id="userPill"></div>
+        <button class="logout-btn" id="logoutBtn" type="button">خروج</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="workspace-panel">
+        <div class="panel-head">
+          <h2>إدخال بيانات الزيارة</h2>
+          <span>زيارة ثانية</span>
+        </div>
+        <form id="analysisForm" class="analysis-form">
+          <label>
+            اسم المدرسة
+            <input name="school_name" placeholder="اتركه فارغًا ليقرأه النظام من تقرير الزيارة السابقة" />
+          </label>
+          <label>
+            تقرير الزيارة السابقة PDF
+            <input name="previous_report" type="file" accept="application/pdf" />
+            <small class="field-hint">ارفع التقرير أول مرة فقط. بعد حفظه يمكن تشغيل تحديثات جديدة بدون إعادة رفع.</small>
+          </label>
+          <label class="check-row">
+            <input name="use_default_report" type="checkbox" value="true" />
+            استخدام تقرير زيارة افتراضي مشابه عند عدم توفر PDF
+          </label>
+          <label>
+            الوضع الحالي للمدرسة
+            <textarea name="current_status" required placeholder="اكتب ملخص الوضع الحالي، الأدلة المتوفرة، التحسن في نواتج التعلم، خطط المعالجة، البيئة المدرسية، الشراكات، وأي تحديات قائمة."></textarea>
+          </label>
+          <label>
+            فريق المدرسة
+            <input name="team_members" placeholder="مدير المدرسة، رائد الجودة، المرشد الطلابي، منسق نواتج التعلم" />
+          </label>
+          <button class="primary-btn" type="submit">تشغيل النظام كاملًا</button>
+        </form>
+
+        <div class="secretariat-box">
+          <div class="panel-head">
+            <h2>سكرتارية الشواهد</h2>
+            <span>فرز ذكي</span>
+          </div>
+          <form id="evidenceForm" class="analysis-form">
+            <label>
+              ملف أو صورة الشاهد
+              <input name="evidence_file" type="file" accept="application/pdf,image/*,.txt,.md,.csv" required />
+            </label>
+            <label>
+              ملاحظة السكرتارية
+              <textarea name="note" class="compact-textarea" placeholder="مثال: شاهد متابعة الغياب من نظام نور بتاريخ 2026/05/13، أو صورة صيانة المختبر."></textarea>
+            </label>
+            <button class="secondary-btn" type="submit">فحص الشاهد وترتيبه</button>
+          </form>
+          <div id="evidenceResult" class="evidence-result" aria-live="polite"></div>
+        </div>
+
+        <div class="secretariat-box golden-box">
+          <div class="panel-head">
+            <h2>الملف الذهبي: ملف الأثر</h2>
+            <span>قبل/بعد</span>
+          </div>
+          <form id="impactForm" class="analysis-form">
+            <label>
+              عنوان قصة الأثر
+              <input name="title" required placeholder="مثال: رفع إتقان مهارة القراءة التحليلية" />
+            </label>
+            <label>
+              المجال / المؤشر
+              <input name="domain" required placeholder="نواتج التعلم، الانضباط، التعليم والتعلم..." />
+            </label>
+            <label>
+              بند التقييم المرتبط
+              <input name="indicator" placeholder="مثال: متابعة-3 أو نواتج التعلم" />
+            </label>
+            <label>
+              قبل
+              <textarea name="before_state" class="compact-textarea" required placeholder="ما الوضع قبل التدخل؟ أرقام، عينة، ضعف واضح."></textarea>
+            </label>
+            <label>
+              بعد
+              <textarea name="after_state" class="compact-textarea" required placeholder="ما الذي تغير بعد التدخل؟"></textarea>
+            </label>
+            <label>
+              نسبة التحسن %
+              <input name="improvement_rate" type="number" step="0.1" value="0" />
+            </label>
+            <label>
+              إحصاءات
+              <textarea name="statistics" class="compact-textarea" placeholder="مثال: ارتفعت نسبة الإتقان من 62% إلى 81% لدى 43 طالبًا."></textarea>
+            </label>
+            <label>
+              نتائج الاختبارات
+              <textarea name="test_results" class="compact-textarea" placeholder="اختبار قبلي/بعدي، نافس، اختبار قصير، تحليل مهارة."></textarea>
+            </label>
+            <label>
+              شهادات وانطباعات
+              <textarea name="testimonials" class="compact-textarea" placeholder="شهادة طالب، ولي أمر، معلم، أو لجنة متابعة."></textarea>
+            </label>
+            <label>
+              سردية الأثر
+              <textarea name="narrative" class="compact-textarea" placeholder="اكتب قصة مختصرة تربط التدخل بالنتيجة والأثر الحقيقي."></textarea>
+            </label>
+            <label>
+              مرفقات الأثر
+              <input name="impact_files" type="file" accept="application/pdf,image/*,.txt,.md,.csv" multiple />
+            </label>
+            <button class="secondary-btn" type="submit">حفظ قصة الأثر</button>
+          </form>
+          <div id="impactResult" class="evidence-result" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="dashboard" id="dashboard">
+        <section class="system-map">
+          <div class="map-head">
+            <h2>مخرجات النظام</h2>
+            <span id="memorySummary">تحميل الذاكرة...</span>
+          </div>
+          <div class="module-grid">
+            <article>
+              <strong>تحليل التقرير</strong>
+              <span>استخراج الفجوات من PDF الزيارة السابقة</span>
+            </article>
+            <article>
+              <strong>مرجعية الزيارة السابقة</strong>
+              <span>فهم المجالات الأربعة، مستويات الأداء، والمؤشرات ذات الأولوية من التقرير</span>
+            </article>
+            <article>
+              <strong>مقارنة التقدم</strong>
+              <span>قياس الفرق بين السابق والوضع الحالي</span>
+            </article>
+            <article>
+              <strong>خطة التحسين</strong>
+              <span>إجراءات مرتبة حسب الأثر والسرعة</span>
+            </article>
+            <article>
+              <strong>توزيع المهام</strong>
+              <span>تحديد المسؤول والمخرج وموعد التنفيذ</span>
+            </article>
+            <article>
+              <strong>محاكاة التقويم</strong>
+              <span>أسئلة متوقعة وشواهد مطلوبة</span>
+            </article>
+            <article>
+              <strong>التوقع والتعلم</strong>
+              <span>سيناريوهات درجة الزيارة القادمة وذاكرة تتحسن مع الوقت</span>
+            </article>
+            <article>
+              <strong>مجلس الوكلاء</strong>
+              <span>جلسة حوارية بين الوكلاء تنتهي بقرارات وبروتوكول تميز</span>
+            </article>
+            <article>
+              <strong>وكلاء التنفيذ</strong>
+              <span>ينشئون ملفات عمل وشواهد ونماذج متابعة جاهزة للتنفيذ</span>
+            </article>
+            <article>
+              <strong>متابعة الأداء والالتزام</strong>
+              <span>سجل أسبوعي للشواهد المطلوبة عند اختيار المدرسة ضمن عينة المتابعة</span>
+            </article>
+            <article>
+              <strong>سكرتارية الشواهد</strong>
+              <span>وكلاء يستقبلون الشاهد، يضعونه في مجاله ومؤشره، ويصدرون حكم ملاءمة قبل الزيارة</span>
+            </article>
+          </div>
+        </section>
+
+        <div class="empty-state">
+          <h2>النظام جاهز للتشغيل</h2>
+          <p>بعد رفع PDF وإدخال الوضع الحالي سيظهر التحليل، الخطة، المهام، المحاكاة، التوقعات، ورابط تقرير PDF.</p>
+        </div>
+      </section>
+    </main>
+
+    <template id="dashboardTemplate">
+      <div class="metrics">
+        <article>
+          <span>الدرجة المتوقعة</span>
+          <strong data-field="expected"></strong>
+        </article>
+        <article>
+          <span>نسبة الثقة</span>
+          <strong data-field="confidence"></strong>
+        </article>
+        <article>
+          <span>متوسط التحسن</span>
+          <strong data-field="improvement"></strong>
+        </article>
+      </div>
+
+      <nav class="dashboard-tabs" aria-label="أقسام لوحة المتابعة">
+        <button type="button" class="active" data-dashboard-tab="overview">النظرة العامة</button>
+        <button type="button" data-dashboard-tab="external">التقييم الخارجي</button>
+        <button type="button" data-dashboard-tab="evidence">الشواهد</button>
+        <button type="button" data-dashboard-tab="impact">ملف الأثر</button>
+        <button type="button" data-dashboard-tab="plan">الخطة والمهام</button>
+        <button type="button" data-dashboard-tab="agents">الوكلاء والبروتوكول</button>
+        <button type="button" data-dashboard-tab="reports">التقارير والذاكرة</button>
+      </nav>
+
+      <div class="section-grid">
+        <section class="result-section wide" data-dashboard-page="overview">
+          <div class="section-title">
+            <h2>لوحة متابعة التنفيذ</h2>
+          </div>
+          <div data-field="progressBoard"></div>
+        </section>
+
+        <section class="result-section wide" data-dashboard-page="external">
+          <div class="section-title">
+            <h2>محاكاة فريق التقييم الخارجي</h2>
+            <span>استدامة، أثر، وترابط</span>
+          </div>
+          <div data-field="externalReadiness"></div>
+        </section>
+
+        <section class="result-section wide" data-dashboard-page="evidence">
+          <div class="section-title">
+            <h2>سكرتارية الشواهد</h2>
+            <span>فرز، أرشفة، وحكم جودة</span>
+          </div>
+          <div class="evidence-toolbar">
+            <button type="button" class="secondary-btn slim-btn" id="buildDossierBtn">تجهيز ملف الشواهد الموحد</button>
+            <a class="report-link slim-link" data-field="evidenceDossier" target="_blank">تنزيل الحزمة</a>
+          </div>
+          <div data-field="evidenceLibrary"></div>
+          <div data-field="evidenceDesk"></div>
+        </section>
+
+        <section class="result-section wide" data-dashboard-page="impact">
+          <div class="section-title">
+            <h2>الملف الذهبي: ملف الأثر</h2>
+            <span>قبل وبعد، نسب تحسن، صور، إحصاءات، شهادات، نتائج اختبارات</span>
+          </div>
+          <div class="evidence-toolbar">
+            <button type="button" class="secondary-btn slim-btn" id="impactAgentBtn">استشارة وكيل الأثر</button>
+            <button type="button" class="secondary-btn slim-btn" id="buildImpactBtn">تجهيز الملف الذهبي</button>
+            <a class="report-link slim-link" data-field="impactPackage" target="_blank">تنزيل الحزمة</a>
+          </div>
+          <div data-field="impactAgent"></div>
+          <div data-field="impactBoard"></div>
+        </section>
+
+        <section class="result-section wide" data-dashboard-page="reports">
+          <div class="section-title">
+            <h2>فهم تقرير الزيارة السابقة</h2>
+          </div>
+          <div data-field="reportProfile"></div>
+        </section>
+
+        <section class="result-section wide" data-dashboard-page="overview">
+          <div class="section-title">
+            <h2>مقارنة المجالات</h2>
+          </div>
+          <div class="domain-list" data-field="domains"></div>
+        </section>
+
+        <section class="result-section" data-dashboard-page="overview">
+          <div class="section-title">
+            <h2>نقاط الضعف</h2>
+          </div>
+          <div data-field="weaknesses"></div>
+        </section>
+
+        <section class="result-section" data-dashboard-page="overview">
+          <div class="section-title">
+            <h2>سيناريوهات التوقع</h2>
+          </div>
+          <div data-field="scenarios"></div>
+        </section>
+
+        <section class="result-section wide" data-dashboard-page="plan">
+          <div class="section-title">
+            <h2>خطة التحسين الذكية</h2>
+            <a class="report-link" data-field="report" target="_blank">تقرير PDF</a>
+          </div>
+          <div data-field="plan"></div>
+        </section>
+
+        <section class="result-section wide" data-dashboard-page="agents">
+          <div class="section-title">
+            <h2>غرفة عمليات وكلاء الذكاء</h2>
+          </div>
+          <div data-field="liveCouncil"></div>
+          <div data-field="council"></div>
+        </section>
+
+        <section class="result-section wide" data-dashboard-page="agents">
+          <div class="section-title">
+            <h2>بروتوكول التميز للزيارة القادمة</h2>
+          </div>
+          <div data-field="protocol"></div>
+        </section>
+
+        <section class="result-section wide" data-dashboard-page="agents">
+          <div class="section-title">
+            <h2>النماذج التشغيلية المقترحة</h2>
+          </div>
+          <div data-field="forms"></div>
+        </section>
+
+        <section class="result-section wide" data-dashboard-page="agents">
+          <div class="section-title">
+            <h2>حزمة التنفيذ العملية</h2>
+            <a class="report-link" data-field="executionDownload" target="_blank">تنزيل الحزمة</a>
+          </div>
+          <div data-field="execution"></div>
+        </section>
+
+        <section class="result-section" data-dashboard-page="plan">
+          <div class="section-title">
+            <h2>توزيع المهام</h2>
+          </div>
+          <div data-field="tasks"></div>
+        </section>
+
+        <section class="result-section" data-dashboard-page="external">
+          <div class="section-title">
+            <h2>محاكاة فريق التقويم</h2>
+          </div>
+          <div data-field="simulation"></div>
+        </section>
+
+        <section class="result-section wide" data-dashboard-page="reports">
+          <div class="section-title">
+            <h2>ذاكرة النظام والتعلم الذاتي</h2>
+          </div>
+          <div data-field="learning"></div>
+        </section>
+
+        <section class="result-section wide admin-only" data-dashboard-page="reports">
+          <div class="section-title">
+            <h2>إدارة النظام والمستخدمين</h2>
+            <button type="button" class="danger-btn" id="clearDataBtn">تفريغ البيانات</button>
+          </div>
+          <div class="admin-grid">
+            <form id="userForm" class="analysis-form admin-form">
+              <label>
+                اسم المستخدم
+                <input name="username" required />
+              </label>
+              <label>
+                الاسم الظاهر
+                <input name="display_name" required />
+              </label>
+              <label>
+                كلمة المرور
+                <input name="password" type="password" required />
+              </label>
+              <label class="check-row">
+                <input name="can_write" type="checkbox" checked />
+                صلاحية التعديل والإضافة
+              </label>
+              <label class="check-row">
+                <input name="can_manage_users" type="checkbox" />
+                إدارة المستخدمين
+              </label>
+              <label class="check-row">
+                <input name="can_clear_data" type="checkbox" />
+                تفريغ البيانات
+              </label>
+              <button class="secondary-btn" type="submit">إضافة مستخدم</button>
+            </form>
+            <div data-field="usersPanel"></div>
+          </div>
+        </section>
+      </div>
+    </template>
+
+    <script src="/static/app.js?v=20260514-4"></script>
+  </body>
+</html>
