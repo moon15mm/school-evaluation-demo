@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>مدير جودة مدرسي افتراضي | Autonomous School Evaluation</title>
+    <style>
+      :root {
+        --teal: #16877b;
+        --teal-dark: #143f4b;
+        --blue: #25639a;
+        --gold: #b98b35;
+        --ink: #102a35;
+        --muted: #5b7080;
+        --line: #d7e5ea;
+        --paper: #f7faf9;
+        --white: #fff;
+      }
+
+      * { box-sizing: border-box; }
+
+      html { scroll-behavior: smooth; }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+        color: var(--ink);
+        background: #f3f7f8;
+      }
+
+      a { color: inherit; text-decoration: none; }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 14px clamp(18px, 4vw, 56px);
+        background: rgba(255, 255, 255, 0.94);
+        border-bottom: 1px solid var(--line);
+        backdrop-filter: blur(14px);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 900;
+        color: var(--teal-dark);
+      }
+
+      .brand-mark {
+        width: 42px;
+        height: 42px;
+        display: grid;
+        place-items: center;
+        border-radius: 10px;
+        color: #fff;
+        background: linear-gradient(135deg, var(--teal-dark), var(--teal));
+      }
+
+      .nav {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .nav a,
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 40px;
+        padding: 9px 15px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        font-weight: 800;
+        font-size: 14px;
+        background: #fff;
+      }
+
+      .button.primary {
+        border-color: var(--teal);
+        color: #fff;
+        background: var(--teal);
+      }
+
+      .button.whatsapp {
+        border-color: #1f9d5a;
+        color: #fff;
+        background: #1f9d5a;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 0.95fr) minmax(420px, 1.05fr);
+        gap: 42px;
+        align-items: center;
+        min-height: calc(100vh - 72px);
+        padding: clamp(34px, 5vw, 70px) clamp(18px, 5vw, 72px);
+        background:
+          linear-gradient(120deg, rgba(20, 63, 75, 0.94), rgba(22, 135, 123, 0.86)),
+          url("/static/assets/moe-logo.png") center 22% / 420px auto no-repeat;
+        color: #fff;
+      }
+
+      .eyebrow {
+        margin: 0 0 14px;
+        color: #d9f3ee;
+        font-weight: 900;
+      }
+
+      h1 {
+        margin: 0;
+        max-width: 820px;
+        font-size: clamp(36px, 5vw, 68px);
+        line-height: 1.22;
+        letter-spacing: 0;
+      }
+
+      .hero-copy {
+        margin: 20px 0 0;
+        max-width: 760px;
+        color: #edf8f6;
+        font-size: clamp(18px, 2vw, 24px);
+        line-height: 1.9;
+        font-weight: 700;
+      }
+
+      .hero-actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 28px;
+      }
+
+      .hero .button {
+        min-height: 48px;
+        padding-inline: 18px;
+      }
+
+      .mock-window {
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        border-radius: 8px;
+        background: #f8fbfb;
+        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.22);
+      }
+
+      .window-bar {
+        height: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 16px;
+        color: #d9e9ee;
+        background: #173f4b;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .dots { display: flex; gap: 6px; }
+      .dots span {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #d8c99e;
+      }
+
+      .dashboard-shot {
+        padding: 18px;
+        color: var(--ink);
+      }
+
+      .kpis {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .kpi {
+        min-height: 96px;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      .kpi strong {
+        display: block;
+        margin-top: 8px;
+        color: var(--teal-dark);
+        font-size: 26px;
+      }
+
+      .screen-grid {
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 12px;
+        margin-top: 12px;
+      }
+
+      .panel {
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      .bar {
+        display: grid;
+        grid-template-columns: 82px 1fr 48px;
+        gap: 10px;
+        align-items: center;
+        margin: 12px 0;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .track {
+        height: 11px;
+        border-radius: 999px;
+        background: #e9eff2;
+        overflow: hidden;
+      }
+
+      .fill {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, var(--teal), var(--blue));
+      }
+
+      .mini-list {
+        display: grid;
+        gap: 10px;
+        margin-top: 10px;
+      }
+
+      .mini-item {
+        padding: 10px;
+        border: 1px solid #e1ecef;
+        border-radius: 8px;
+        background: #f8fbfb;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      section {
+        padding: clamp(42px, 6vw, 78px) clamp(18px, 5vw, 72px);
+      }
+
+      .section-head {
+        max-width: 860px;
+        margin-bottom: 26px;
+      }
+
+      .section-head h2 {
+        margin: 0;
+        color: var(--teal-dark);
+        font-size: clamp(28px, 3.4vw, 46px);
+      }
+
+      .section-head p {
+        margin: 12px 0 0;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1.8;
+        font-weight: 700;
+      }
+
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .card {
+        min-height: 190px;
+        padding: 22px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      .card h3 {
+        margin: 0 0 12px;
+        color: var(--teal-dark);
+        font-size: 21px;
+      }
+
+      .card p,
+      .card li {
+        color: var(--muted);
+        line-height: 1.8;
+        font-weight: 700;
+      }
+
+      .card ul {
+        margin: 0;
+        padding-inline-start: 20px;
+      }
+
+      .solution {
+        background: var(--paper);
+      }
+
+      .demo-links {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .demo-card {
+        padding: 24px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      .demo-card strong {
+        display: block;
+        color: var(--teal-dark);
+        font-size: 24px;
+      }
+
+      .demo-card p {
+        min-height: 92px;
+        color: var(--muted);
+        line-height: 1.75;
+        font-weight: 700;
+      }
+
+      .screens {
+        background: #fff;
+      }
+
+      .screen-row {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .screen-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+        background: #fff;
+      }
+
+      .screen-card .dashboard-shot {
+        min-height: 310px;
+      }
+
+      .screen-title {
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--line);
+        color: var(--teal-dark);
+        font-weight: 900;
+        background: #f8fbfb;
+      }
+
+      .cta {
+        color: #fff;
+        background: linear-gradient(110deg, var(--teal-dark), var(--teal));
+      }
+
+      .cta-inner {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 24px;
+        align-items: center;
+      }
+
+      .cta h2 {
+        margin: 0;
+        font-size: clamp(28px, 4vw, 48px);
+      }
+
+      .cta p {
+        margin: 12px 0 0;
+        max-width: 820px;
+        color: #e7f6f3;
+        font-size: 18px;
+        line-height: 1.8;
+        font-weight: 700;
+      }
+
+      .footer {
+        padding: 22px clamp(18px, 5vw, 72px);
+        color: var(--muted);
+        background: #fff;
+        border-top: 1px solid var(--line);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      @media (max-width: 980px) {
+        .hero,
+        .cta-inner {
+          grid-template-columns: 1fr;
+        }
+
+        .hero {
+          min-height: auto;
+        }
+
+        .cards,
+        .demo-links,
+        .screen-row {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 620px) {
+        .topbar {
+          position: static;
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .hero-actions,
+        .nav {
+          width: 100%;
+        }
+
+        .button,
+        .nav a {
+          width: 100%;
+        }
+
+        .kpis,
+        .screen-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#top">
+        <span class="brand-mark">A</span>
+        <span>Autonomous School Evaluation</span>
+      </a>
+      <nav class="nav" aria-label="روابط الصفحة">
+        <a href="#problem">المشكلة</a>
+        <a href="#solution">الحل</a>
+        <a href="#demos">روابط العرض</a>
+        <a href="#screens">لوحة المتابعة</a>
+        <a class="button whatsapp" id="topWhatsapp" href="https://wa.me/?text=%D8%A3%D8%B1%D8%BA%D8%A8%20%D8%A8%D8%AC%D9%84%D8%B3%D8%A9%20%D8%AA%D8%B4%D8%AE%D9%8A%D8%B5%20%D9%84%D9%86%D8%B8%D8%A7%D9%85%20%D8%A7%D9%84%D8%AA%D9%82%D9%88%D9%8A%D9%85%20%D8%A7%D9%84%D9%85%D8%AF%D8%B1%D8%B3%D9%8A" target="_blank" rel="noopener">تواصل واتساب</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">نظام ذكي للاستعداد لزيارة التقويم الخارجي</p>
+          <h1>مدير جودة مدرسي افتراضي يحول الاستعداد للزيارة إلى عمل قابل للقياس.</h1>
+          <p class="hero-copy">
+            يحلل تقرير الزيارة السابقة، يبني خطة تحسين، ينظم الشواهد، يوثق ملف الأثر، ويحاكي أسئلة فريق التقويم قبل يوم الزيارة.
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="#demos">جرّب النسخة المناسبة لمرحلتك</a>
+            <a class="button whatsapp" href="https://wa.me/?text=%D8%A3%D8%B1%D8%BA%D8%A8%20%D8%A8%D8%AC%D9%84%D8%B3%D8%A9%20%D8%AA%D8%B4%D8%AE%D9%8A%D8%B5%20%D9%84%D9%86%D8%B8%D8%A7%D9%85%20%D8%A7%D9%84%D8%AA%D9%82%D9%88%D9%8A%D9%85%20%D8%A7%D9%84%D9%85%D8%AF%D8%B1%D8%B3%D9%8A" target="_blank" rel="noopener">احجز جلسة تشخيص</a>
+          </div>
+        </div>
+
+        <div class="mock-window" aria-label="نموذج من لوحة المتابعة">
+          <div class="window-bar">
+            <span>لوحة متابعة جاهزية المدرسة</span>
+            <span class="dots"><span></span><span></span><span></span></span>
+          </div>
+          <div class="dashboard-shot">
+            <div class="kpis">
+              <div class="kpi">الدرجة المتوقعة<strong>84.5</strong></div>
+              <div class="kpi">إنجاز المهام<strong>68%</strong></div>
+              <div class="kpi">ملف الأثر<strong>قوي</strong></div>
+            </div>
+            <div class="screen-grid">
+              <div class="panel">
+                <strong>تقدم المجالات</strong>
+                <div class="bar"><span>نواتج التعلم</span><span class="track"><span class="fill" style="width:72%"></span></span><span>72%</span></div>
+                <div class="bar"><span>التعليم</span><span class="track"><span class="fill" style="width:81%"></span></span><span>81%</span></div>
+                <div class="bar"><span>البيئة</span><span class="track"><span class="fill" style="width:76%"></span></span><span>76%</span></div>
+              </div>
+              <div class="panel">
+                <strong>تنبيهات الوكلاء</strong>
+                <div class="mini-list">
+                  <div class="mini-item">شاهد جيد يحتاج قياس أثر قبل/بعد.</div>
+                  <div class="mini-item">مهمة متأخرة في نواتج التعلم.</div>
+                  <div class="mini-item">محاكاة الفريق تقترح سؤالًا جديدًا.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="problem">
+        <div class="section-head">
+          <h2>المشكلة</h2>
+          <p>كثير من المدارس تدخل زيارة التقويم بملفات كثيرة، لكن دون ربط واضح بين البرامج والأثر الحقيقي على الطالب.</p>
+        </div>
+        <div class="cards">
+          <article class="card">
+            <h3>الاستعداد الشكلي</h3>
+            <p>الشواهد تكون مبعثرة، والملفات جميلة ظاهريًا لكنها لا تجيب عن سؤال فريق التقويم: ما الأثر؟</p>
+          </article>
+          <article class="card">
+            <h3>ضعف قراءة البيانات</h3>
+            <p>توجد نتائج واختبارات وحضور وانضباط، لكنها لا تتحول دائمًا إلى قرارات وخطط علاجية قابلة للمتابعة.</p>
+          </article>
+          <article class="card">
+            <h3>ضغط ما قبل الزيارة</h3>
+            <p>المدرسة تحتاج معرفة فجواتها وأسئلة الفريق المتوقعة قبل الزيارة، وليس بعد ظهور التقرير.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="solution" id="solution">
+        <div class="section-head">
+          <h2>الحل</h2>
+          <p>النظام يعمل كمدير جودة افتراضي: يحلل، يخطط، يوزع المهام، ينظم الشواهد، ويبني ملف الأثر بطريقة تناسب فريق التقويم.</p>
+        </div>
+        <div class="cards">
+          <article class="card">
+            <h3>تحليل ذكي</h3>
+            <ul>
+              <li>قراءة تقرير الزيارة السابقة.</li>
+              <li>تحديد نقاط الضعف والأولويات.</li>
+              <li>توقع الدرجة القادمة.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>سكرتارية الشواهد</h3>
+            <ul>
+              <li>تصنيف الشواهد حسب بنود التقويم.</li>
+              <li>رأي ذكي في جودة الشاهد.</li>
+              <li>ملف PDF موحد ومنظم.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>ملف الأثر</h3>
+            <ul>
+              <li>قبل وبعد.</li>
+              <li>نسب تحسن ورسوم بيانية.</li>
+              <li>شهادات ونتائج واختبارات.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section id="demos">
+        <div class="section-head">
+          <h2>روابط Demo حسب المرحلة</h2>
+          <p>اختر رابط المرحلة المناسبة. حساب العرض في كل النسخ: <strong>demo / demo123</strong></p>
+        </div>
+        <div class="demo-links">
+          <article class="demo-card">
+            <strong>الابتدائية</strong>
+            <p>تركز على القراءة الجهرية، الفهم القرائي، العمليات الأساسية، مشاركة الأسرة، والكشف المبكر.</p>
+            <a class="button primary" href="https://school-evaluation-primary-demo.onrender.com" target="_blank" rel="noopener">فتح Demo الابتدائية</a>
+          </article>
+          <article class="demo-card">
+            <strong>المتوسطة</strong>
+            <p>تركز على المهارات الأساسية، الدافعية، الانضباط، الزيارات الصفية، وخطط العلاج حسب المهارة.</p>
+            <a class="button primary" href="https://school-evaluation-intermediate-demo.onrender.com" target="_blank" rel="noopener">فتح Demo المتوسطة</a>
+          </article>
+          <article class="demo-card">
+            <strong>الثانوية</strong>
+            <p>تركز على التحصيل، القدرات، المسارات، الإرشاد الأكاديمي، الاستعداد الجامعي والمهني.</p>
+            <a class="button primary" href="https://school-evaluation-secondary-demo.onrender.com" target="_blank" rel="noopener">فتح Demo الثانوية</a>
+          </article>
+        </div>
+      </section>
+
+      <section class="screens" id="screens">
+        <div class="section-head">
+          <h2>صور من لوحة المتابعة</h2>
+          <p>نماذج بصرية توضح طريقة عرض التقدم، الشواهد، ملف الأثر، وتنبيهات وكلاء الذكاء.</p>
+        </div>
+        <div class="screen-row">
+          <article class="screen-card">
+            <div class="screen-title">مؤشرات التقدم والتأخر</div>
+            <div class="dashboard-shot">
+              <div class="kpis">
+                <div class="kpi">مهام مكتملة<strong>14</strong></div>
+                <div class="kpi">متأخرات<strong>3</strong></div>
+                <div class="kpi">جاهزية<strong>82%</strong></div>
+              </div>
+              <div class="panel" style="margin-top:12px">
+                <div class="bar"><span>الخطة</span><span class="track"><span class="fill" style="width:74%"></span></span><span>74%</span></div>
+                <div class="bar"><span>الشواهد</span><span class="track"><span class="fill" style="width:66%"></span></span><span>66%</span></div>
+                <div class="bar"><span>الأثر</span><span class="track"><span class="fill" style="width:58%"></span></span><span>58%</span></div>
+              </div>
+            </div>
+          </article>
+          <article class="screen-card">
+            <div class="screen-title">ملف الأثر والشواهد</div>
+            <div class="dashboard-shot">
+              <div class="panel">
+                <strong>قصة أثر: رفع إتقان الفهم القرائي</strong>
+                <div class="bar"><span>قبل</span><span class="track"><span class="fill" style="width:54%; background:#d8c99e"></span></span><span>54%</span></div>
+                <div class="bar"><span>بعد</span><span class="track"><span class="fill" style="width:69%"></span></span><span>69%</span></div>
+                <div class="mini-list">
+                  <div class="mini-item">الرسم البياني يوضح +15% تحسن.</div>
+                  <div class="mini-item">الشاهد مصنف داخل نواتج التعلم.</div>
+                  <div class="mini-item">توصية: إرفاق عينة من أداة القياس.</div>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="cta" id="contact">
+        <div class="cta-inner">
+          <div>
+            <h2>ابدأ بجلسة تشخيص مجانية.</h2>
+            <p>اعرض تقرير الزيارة السابقة، واحصل على قراءة أولية لأهم الفجوات، وأقوى 3 إجراءات لرفع جاهزية المدرسة قبل الزيارة القادمة.</p>
+          </div>
+          <a class="button whatsapp" href="https://wa.me/?text=%D8%A3%D8%B1%D8%BA%D8%A8%20%D8%A8%D8%AC%D9%84%D8%B3%D8%A9%20%D8%AA%D8%B4%D8%AE%D9%8A%D8%B5%20%D9%84%D9%86%D8%B8%D8%A7%D9%85%20%D8%A7%D9%84%D8%AA%D9%82%D9%88%D9%8A%D9%85%20%D8%A7%D9%84%D9%85%D8%AF%D8%B1%D8%B3%D9%8A" target="_blank" rel="noopener">تواصل عبر واتساب</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      Autonomous School Evaluation & Improvement System - صفحة عرض تسويقية للمدارس.
+    </footer>
+  </body>
+</html>

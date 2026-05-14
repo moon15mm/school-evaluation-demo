@@ -110,6 +110,11 @@ def index() -> FileResponse:
     return FileResponse(BASE_DIR / "static" / "index.html")
 
 
+@app.get("/landing")
+def landing() -> FileResponse:
+    return FileResponse(BASE_DIR / "static" / "landing.html")
+
+
 @app.get("/api/health")
 def health() -> dict:
     return {"status": "ok", "system": "Autonomous School Evaluation & Improvement System"}
