@@ -7,6 +7,12 @@ from app.core.models import DOMAIN_LABELS, VisitRecord
 
 def _arabic_font_path() -> Path | None:
     for candidate in [
+        Path("app/static/assets/NotoNaskhArabic-Regular.ttf"),
+        Path("app/static/assets/DejaVuSans.ttf"),
+        Path("/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"),
+        Path("/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf"),
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+        Path("/usr/share/fonts/truetype/freefont/FreeSans.ttf"),
         Path("C:/Windows/Fonts/tahoma.ttf"),
         Path("C:/Windows/Fonts/arial.ttf"),
         Path("C:/Windows/Fonts/Arial Unicode MS.ttf"),
@@ -19,6 +25,12 @@ def _arabic_font_path() -> Path | None:
 
 def _arabic_bold_font_path() -> Path | None:
     for candidate in [
+        Path("app/static/assets/NotoNaskhArabic-Bold.ttf"),
+        Path("app/static/assets/DejaVuSans-Bold.ttf"),
+        Path("/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf"),
+        Path("/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf"),
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+        Path("/usr/share/fonts/truetype/freefont/FreeSansBold.ttf"),
         Path("C:/Windows/Fonts/tahomabd.ttf"),
         Path("C:/Windows/Fonts/arialbd.ttf"),
         Path("C:/Windows/Fonts/segoeuib.ttf"),

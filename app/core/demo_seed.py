@@ -265,16 +265,18 @@ def _write_demo_pdf(path: Path, title: str, lines: list[str]) -> None:
     from reportlab.lib.pagesizes import A4
     from reportlab.pdfgen import canvas
 
+    from app.core.reporting import _draw_rtl, register_arabic_fonts
+
     path.parent.mkdir(parents=True, exist_ok=True)
     pdf = canvas.Canvas(str(path), pagesize=A4)
     width, height = A4
-    pdf.setFont("Helvetica-Bold", 16)
-    pdf.drawRightString(width - 48, height - 72, title)
-    pdf.setFont("Helvetica", 11)
+    normal_font, bold_font = register_arabic_fonts("DemoEvidenceArabic")
+    _draw_rtl(pdf, title, width - 48, height - 72, bold_font, 16)
     y = height - 116
     for line in lines:
-        pdf.drawRightString(width - 48, y, line)
+        _draw_rtl(pdf, line, width - 48, y, normal_font, 11)
         y -= 24
+    pdf.setFont("Helvetica", 9)
     pdf.drawRightString(width - 48, y - 18, "Demo evidence file for online presentation.")
     pdf.save()
 
