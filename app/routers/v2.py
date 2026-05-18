@@ -146,6 +146,13 @@ async def v2_parse_report(
                 if k not in scores:
                     scores[k] = v
 
+        # احتياطي أخير: أرقام عشرية مرتّبة في التقرير
+        if len(scores) < 4:
+            scores_raw = _extract_scores_raw_numbers(tmp_path)
+            for k, v in scores_raw.items():
+                if k not in scores:
+                    scores[k] = v
+
         return {
             "school_name": school_name,
             "school_level": school_level,
@@ -175,40 +182,40 @@ def _extract_etec_scores_spatial(pdf_path: Path) -> dict:
         "school_environment",  # أقصى اليسار
     ]
 
-    pct_re = re.compile(r"^(\d{2,3}(?:\.\d+)?)\s*%$")
+    # يقبل: 77% أو 77.25% أو 77.25 ٪ أو 77٪ أو مجرد 77.25
+    pct_re = re.compile(r"^(\d{2,3}(?:[.,]\d+)?)\s*[%٪]?$")
 
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages[:8]:
-            words = page.extract_words(x_tolerance=3, y_tolerance=3)
-            # اجمع كل النسب المئوية مع مواضعها
+            words = page.extract_words(x_tolerance=5, y_tolerance=5)
+            # اجمع كل الأرقام التي تبدو درجات (20-100) مع مواضعها
             pcts = []
             for w in words:
-                m = pct_re.match(w["text"])
+                m = pct_re.match(w["text"].strip())
                 if m:
-                    val = float(m.group(1))
-                    if 55 <= val <= 100:
+                    val = float(m.group(1).replace(",", "."))
+                    if 20 <= val <= 100:
                         pcts.append((float(w["x0"]), float(w["top"]), val))
 
             if len(pcts) < 4:
                 continue
 
-            # ابحث عن مجموعة من 4 نسب في نطاق y ضيق (≤25 نقطة)
+            # ابحث عن مجموعة من 4 نسب في نطاق y ضيق (≤30 نقطة)
             pcts_sorted_y = sorted(pcts, key=lambda p: p[1])
             for i in range(len(pcts_sorted_y)):
                 cluster = [pcts_sorted_y[i]]
                 for j in range(i + 1, len(pcts_sorted_y)):
-                    if abs(pcts_sorted_y[j][1] - pcts_sorted_y[i][1]) <= 25:
+                    if abs(pcts_sorted_y[j][1] - pcts_sorted_y[i][1]) <= 30:
                         cluster.append(pcts_sorted_y[j])
                     else:
                         break
-                # نريد بالضبط 4 نسب في نفس الصف + تمتد على عرض معقول
                 if len(cluster) >= 4:
-                    cluster = cluster[:4]
-                    x_span = max(p[0] for p in cluster) - min(p[0] for p in cluster)
-                    if x_span < 40:
+                    cluster4 = cluster[:4]
+                    x_span = max(p[0] for p in cluster4) - min(p[0] for p in cluster4)
+                    if x_span < 30:
                         continue
                     # رتّب من اليمين لليسار (x تنازلي) وعيّن المجالات
-                    cluster_rtl = sorted(cluster, key=lambda p: -p[0])
+                    cluster_rtl = sorted(cluster4, key=lambda p: -p[0])
                     return {
                         domain: round(val, 2)
                         for domain, (_, __, val) in zip(DOMAIN_ORDER, cluster_rtl)
@@ -287,31 +294,74 @@ def _extract_etec_scores_text(pdf_path: Path) -> dict:
             except Exception:
                 full_text += raw + "\n"
 
+    NUM = r"(\d{2,3}(?:[.,]\d+)?)\s*[%٪]?"
     PATTERNS = {
         "school_management": [
-            r"الإدارة\s+المدرسية[^\d]*?(\d{2,3}(?:\.\d+)?)\s*%",
-            r"القيادة\s+المدرسية[^\d]*?(\d{2,3}(?:\.\d+)?)\s*%",
+            rf"الإدارة\s*المدرسية[^\d]{{0,60}}{NUM}",
+            rf"القيادة\s*المدرسية[^\d]{{0,60}}{NUM}",
+            rf"إدارة\s*المدرسة[^\d]{{0,60}}{NUM}",
         ],
         "teaching_learning": [
-            r"التعليم\s+والتعلم[^\d]*?(\d{2,3}(?:\.\d+)?)\s*%",
+            rf"التعليم\s*والتعلم[^\d]{{0,60}}{NUM}",
+            rf"جودة\s*التعليم[^\d]{{0,60}}{NUM}",
+            rf"التدريس\s*والتعلم[^\d]{{0,60}}{NUM}",
         ],
         "learning_outcomes": [
-            r"نواتج\s+التعلم[^\d]*?(\d{2,3}(?:\.\d+)?)\s*%",
+            rf"نواتج\s*التعلم[^\d]{{0,60}}{NUM}",
+            rf"مخرجات\s*التعلم[^\d]{{0,60}}{NUM}",
+            rf"نتائج\s*التعلم[^\d]{{0,60}}{NUM}",
         ],
         "school_environment": [
-            r"البيئة\s+المدرسية[^\d]*?(\d{2,3}(?:\.\d+)?)\s*%",
+            rf"البيئة\s*المدرسية[^\d]{{0,60}}{NUM}",
+            rf"بيئة\s*المدرسة[^\d]{{0,60}}{NUM}",
         ],
     }
     scores: dict[str, float] = {}
     for domain, patterns in PATTERNS.items():
         for pat in patterns:
-            m = re.search(pat, full_text)
+            m = re.search(pat, full_text, re.DOTALL)
             if m:
-                val = float(m.group(1))
-                if 55 <= val <= 100:
+                val = float(m.group(1).replace(",", "."))
+                if 20 <= val <= 100:
                     scores[domain] = round(val, 1)
                     break
     return scores
+
+
+def _extract_scores_raw_numbers(pdf_path: Path) -> dict:
+    """
+    احتياطي أخير: يجمع كل الأرقام (20-100) من الصفحات الأولى
+    ويأخذ أول 4 أرقام مختلفة تظهر في صف واحد كدرجات المجالات.
+    """
+    import re
+    try:
+        import pdfplumber
+    except ImportError:
+        return {}
+
+    DOMAIN_ORDER = ["school_management", "teaching_learning",
+                    "learning_outcomes", "school_environment"]
+    num_re = re.compile(r"(\d{2,3}(?:[.,]\d+)?)")
+
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages[:5]:
+            words = page.extract_words(x_tolerance=5, y_tolerance=8)
+            rows: dict[int, list] = {}
+            for w in words:
+                k = round(float(w["top"]) / 8) * 8
+                rows.setdefault(k, []).append(w)
+
+            for row_words in sorted(rows.values(), key=lambda r: float(r[0]["top"])):
+                nums = []
+                for w in sorted(row_words, key=lambda x: -float(x["x0"])):
+                    m = num_re.fullmatch(w["text"].strip().replace(",", "."))
+                    if m:
+                        val = float(m.group(1))
+                        if 20 <= val <= 100:
+                            nums.append(round(val, 2))
+                if len(nums) >= 4:
+                    return {d: v for d, v in zip(DOMAIN_ORDER, nums[:4])}
+    return {}
 
 
 # ── حفظ في الذاكرة ───────────────────────────────────────────────────
