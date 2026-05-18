@@ -24,7 +24,7 @@ from app.core.report_reference import build_school_report_profile
 from app.core.secretariat_agents import EvidenceSecretariat
 from app.core.live_council import LiveAgentCouncil
 from app.core.demo_seed import seed_demo_data
-from app.core.stage_rubrics import get_stage_rubric
+from app.routers.v2 import router as v2_router
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -43,6 +43,7 @@ EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
 IMPACT_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="Autonomous School Evaluation & Improvement System")
+app.include_router(v2_router)
 auth = AuthManager(USERS_PATH)
 memory = SchoolMemory(MEMORY_PATH)
 pipeline = EvaluationPipeline(memory, REPORTS_DIR, EXECUTION_DIR)
@@ -108,11 +109,6 @@ def require_clear_permission(user: User = Depends(current_user)) -> User:
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(BASE_DIR / "static" / "index.html")
-
-
-@app.get("/landing")
-def landing() -> FileResponse:
-    return FileResponse(BASE_DIR / "static" / "landing.html")
 
 
 @app.get("/api/health")
@@ -317,47 +313,136 @@ def _evidence_library(visit=None) -> dict:
         folder["total"] += 1
         folder[review.suitability] = folder.get(review.suitability, 0) + 1
         folder["reviews"].append(review.model_dump())
-    ordered = sorted(folders.values(), key=lambda item: (item["domain"], item["indicator_code"]))
+    # رتّب: المجالات الرسمية الأربعة أولاً، ثم متابعة الأداء، ثم البقية
+    _DOMAIN_ORDER = {
+        "الإدارة المدرسية": 0, "التعليم والتعلم": 1,
+        "نواتج التعلم": 2, "البيئة المدرسية": 3,
+        "متابعة الأداء الأسبوعي": 4,
+    }
+    ordered = sorted(
+        folders.values(),
+        key=lambda f: (_DOMAIN_ORDER.get(f["domain"], 9), f["indicator_code"])
+    )
     return {"folders": ordered, "total_reviews": len(reviews)}
 
 
 def _seed_required_evidence_folders(folders: dict[str, dict], visit) -> None:
-    if visit.report_profile:
-        for indicator in [*visit.report_profile.improvement_priorities, *visit.report_profile.strengths]:
-            key = f"{indicator.domain}::{indicator.code}"
-            folders.setdefault(
-                key,
-                {
+    """
+    يملأ المكتبة بالمجلدات المطلوبة:
+    • زيارات v2 (school_level محدد): مؤشرات ETEC الرسمية من خطة التحسين
+    • زيارات قديمة: مؤشرات تقرير الزيارة + مؤشرات متابعة الأداء الأسبوعي
+    • دائماً: قسم متابعة الأداء الأسبوعي كمرجع منفصل
+    """
+    school_level = getattr(visit, "school_level", None) or ""
+
+    if school_level:
+        # ── زيارة v2: أنشئ مجلدات من خطة التحسين ETEC ───────────────
+        _seed_etec_evidence_folders(folders, visit)
+    else:
+        # ── زيارة قديمة: مؤشرات تقرير الزيارة ───────────────────────
+        if visit.report_profile:
+            for indicator in [*visit.report_profile.improvement_priorities,
+                               *visit.report_profile.strengths]:
+                key = f"{indicator.domain}::{indicator.code}"
+                folders.setdefault(key, {
                     "domain": indicator.domain,
                     "indicator_code": indicator.code,
                     "indicator_title": indicator.title,
                     "required_evidence": indicator.required_response,
                     "destination_folder": str(EVIDENCE_DIR / visit.id / _slug(indicator.domain) / _slug(indicator.code)),
-                    "total": 0,
-                    "suitable": 0,
-                    "needs_edit": 0,
-                    "insufficient": 0,
-                    "reviews": [],
-                },
-            )
-    for item in performance_followup_reference()["indicators"]:
-        code = f"متابعة-{item['number']}"
-        key = f"{item['domain']}::{code}"
-        folders.setdefault(
-            key,
-            {
-                "domain": item["domain"],
+                    "total": 0, "suitable": 0, "needs_edit": 0,
+                    "insufficient": 0, "reviews": [],
+                })
+
+    # ── مؤشرات متابعة الأداء الأسبوعي — للزيارات القديمة فقط (v1) ───
+    if not school_level:
+        for item in performance_followup_reference()["indicators"]:
+            code = f"متابعة-{item['number']}"
+            domain_label = "متابعة الأداء الأسبوعي"
+            key = f"{domain_label}::{code}"
+            folders.setdefault(key, {
+                "domain": domain_label,
                 "indicator_code": code,
                 "indicator_title": item["question"],
                 "required_evidence": item["required_evidence"],
-                "destination_folder": str(EVIDENCE_DIR / visit.id / _slug(item["domain"]) / _slug(code)),
-                "total": 0,
-                "suitable": 0,
-                "needs_edit": 0,
-                "insufficient": 0,
-                "reviews": [],
-            },
+                "destination_folder": str(EVIDENCE_DIR / visit.id / "متابعة_الأداء" / _slug(code)),
+                "total": 0, "suitable": 0, "needs_edit": 0,
+                "insufficient": 0, "reviews": [],
+            })
+
+
+def _seed_etec_evidence_folders(folders: dict[str, dict], visit) -> None:
+    """يملأ المجلدات من مؤشرات ETEC الرسمية — يستخرج رمز المؤشر مباشرةً من success_metric."""
+    import re as _re
+    try:
+        from improved_v2.etec_reference import (
+            get_indicator_by_code,
+            get_indicators_for_level,
+            DEFAULT_LEVEL,
         )
+        _ETEC_OK = True
+    except ImportError:
+        _ETEC_OK = False
+
+    _DOMAIN_AR = {
+        "school_management":  "الإدارة المدرسية",
+        "teaching_learning":  "التعليم والتعلم",
+        "learning_outcomes":  "نواتج التعلم",
+        "school_environment": "البيئة المدرسية",
+    }
+    school_level = getattr(visit, "school_level", DEFAULT_LEVEL if _ETEC_OK else "ثانوي") or "ثانوي"
+
+    _CODE_RE = _re.compile(r'\d+-\d+-\d+-\d+')
+
+    if _ETEC_OK:
+        for action in visit.plan:
+            # ابحث عن رمز المؤشر في success_metric أو title
+            code_match = _CODE_RE.search(action.success_metric or "") \
+                      or _CODE_RE.search(action.title or "")
+            if code_match:
+                ind = get_indicator_by_code(code_match.group(), school_level)
+            else:
+                ind = None
+
+            # احتياطي: مطابقة بالعنوان
+            if ind is None:
+                all_ind = get_indicators_for_level(school_level)
+                ind = next(
+                    (i for i in all_ind if i.title == action.title),
+                    None
+                )
+            if ind is None:
+                continue
+
+            domain_ar = _DOMAIN_AR.get(ind.domain, ind.domain)
+            key = f"{domain_ar}::{ind.code}"
+            evidence_text = "\n".join(
+                f"{i+1}. {ev}" for i, ev in enumerate(ind.evidence_required)
+            )
+            folders.setdefault(key, {
+                "domain": domain_ar,
+                "indicator_code": ind.code,
+                "indicator_title": ind.title,
+                "required_evidence": evidence_text or action.success_metric,
+                "destination_folder": str(EVIDENCE_DIR / visit.id / _slug(domain_ar) / _slug(ind.code)),
+                "total": 0, "suitable": 0, "needs_edit": 0,
+                "insufficient": 0, "reviews": [],
+                "evidence_items": list(ind.evidence_required),
+            })
+
+    # إذا لم تتوفر ETEC أو لا توجد مؤشرات بعد — ابنِ مجلداً لكل مجال رسمي
+    if not [f for f in folders if any(v in f for v in _DOMAIN_AR.values())]:
+        for domain_ar in _DOMAIN_AR.values():
+            key = f"{domain_ar}::عام"
+            folders.setdefault(key, {
+                "domain": domain_ar,
+                "indicator_code": "—",
+                "indicator_title": f"شواهد مجال {domain_ar}",
+                "required_evidence": "ارفع الشواهد المرتبطة بهذا المجال.",
+                "destination_folder": str(EVIDENCE_DIR / visit.id / _slug(domain_ar) / "عام"),
+                "total": 0, "suitable": 0, "needs_edit": 0,
+                "insufficient": 0, "reviews": [],
+            })
 
 
 def _slug(value: str) -> str:
@@ -477,7 +562,6 @@ def _build_evidence_dossier(visit_id: str) -> Path:
 @app.get("/api/workspace")
 def workspace() -> dict:
     latest = memory.latest_visit()
-    demo_stage = os.getenv("DEMO_STAGE", "secondary").strip().lower()
     active_visit = latest.model_dump() if latest else None
     if latest and not latest.external_readiness:
         active_visit["external_readiness"] = external_advisor.build(
@@ -489,8 +573,6 @@ def workspace() -> dict:
         ).model_dump()
     return {
         "has_memory": latest is not None,
-        "demo_stage": demo_stage,
-        "stage_rubric": get_stage_rubric(demo_stage),
         "active_visit": active_visit,
         "dashboard": _visit_dashboard(latest) if latest else None,
         "learning_profile": memory.learning_profile(),
@@ -500,12 +582,6 @@ def workspace() -> dict:
         "impact_advice": impact_agent.advise(latest, len(_impact_records_for_visit(latest.id, 200))) if latest else None,
         "council_events": [item.model_dump() for item in memory.latest_council_events(latest.id if latest else None, 30)],
     }
-
-
-@app.get("/api/demo/stage")
-def demo_stage_profile() -> dict:
-    demo_stage = os.getenv("DEMO_STAGE", "secondary").strip().lower()
-    return {"stage": demo_stage, "rubric": get_stage_rubric(demo_stage)}
 
 
 @app.get("/api/evidence/reviews")
@@ -547,7 +623,9 @@ async def review_evidence(
     with incoming.open("wb") as buffer:
         shutil.copyfileobj(evidence_file.file, buffer)
 
-    review = secretariat.review_and_archive(incoming, safe_name, note, latest, EVIDENCE_DIR)
+    # استخدام مرحلة المدرسة إن وُجدت في الزيارة
+    _school_level = getattr(latest, "school_level", "ثانوي") or "ثانوي"
+    review = secretariat.review_and_archive(incoming, safe_name, note, latest, EVIDENCE_DIR, _school_level)
     memory.save_evidence_review(review)
     event = memory.save_council_event(live_council.evidence_event(latest, review))
     return {
@@ -570,9 +648,7 @@ def build_evidence_dossier(_: User = Depends(require_write)) -> dict:
 
 @app.get("/api/evidence/dossier/{visit_id}/download")
 def evidence_dossier_download(visit_id: str) -> FileResponse:
-    zip_path = EVIDENCE_DIR / f"evidence-dossier-{visit_id}.zip"
-    if not zip_path.exists():
-        zip_path = _build_evidence_dossier(visit_id)
+    zip_path = _build_evidence_dossier(visit_id)
     return FileResponse(zip_path, media_type="application/zip", filename=zip_path.name)
 
 
@@ -592,10 +668,9 @@ def evidence_card(review_id: str) -> FileResponse:
     for review in memory.latest_evidence_reviews(500):
         if review.id == review_id:
             path = Path(review.destination_folder) / f"بطاقة_الشاهد_{review.id}.pdf"
-            if not path.exists():
-                from app.core.evidence_pdf import build_evidence_card_pdf
+            from app.core.evidence_pdf import build_evidence_card_pdf
 
-                build_evidence_card_pdf(review, "", Path(review.destination_folder))
+            build_evidence_card_pdf(review, "", Path(review.destination_folder))
             if path.exists():
                 return FileResponse(path, media_type="application/pdf", filename=path.name)
             break
@@ -607,10 +682,9 @@ def evidence_decision(review_id: str) -> FileResponse:
     for review in memory.latest_evidence_reviews(500):
         if review.id == review_id:
             path = Path(review.destination_folder) / f"قرار_السكرتارية_{review.id}.pdf"
-            if not path.exists():
-                from app.core.evidence_pdf import build_secretariat_decision_pdf
+            from app.core.evidence_pdf import build_secretariat_decision_pdf
 
-                build_secretariat_decision_pdf(review, Path(review.destination_folder))
+            build_secretariat_decision_pdf(review, Path(review.destination_folder))
             if path.exists():
                 return FileResponse(path, media_type="application/pdf", filename=path.name)
             break
@@ -734,9 +808,7 @@ def build_impact_package(_: User = Depends(require_write)) -> dict:
 
 @app.get("/api/impact/package/{visit_id}/download")
 def impact_package_download(visit_id: str) -> FileResponse:
-    zip_path = IMPACT_DIR / f"golden-impact-file-{visit_id}.zip"
-    if not zip_path.exists():
-        zip_path = _build_impact_package(visit_id)
+    zip_path = _build_impact_package(visit_id)
     return FileResponse(zip_path, media_type="application/zip", filename=zip_path.name)
 
 
@@ -758,10 +830,9 @@ def update_task_status(visit_id: str, action_id: str, update: TaskStatusUpdate, 
 @app.get("/api/reports/{visit_id}")
 def report(visit_id: str) -> FileResponse:
     for visit in memory.all_visits():
-        if visit.id == visit_id and visit.report_path:
-            path = Path(visit.report_path)
-            if path.exists():
-                return FileResponse(path, media_type="application/pdf", filename=path.name)
+        if visit.id == visit_id:
+            path = build_pdf_report(visit, REPORTS_DIR)
+            return FileResponse(path, media_type="application/pdf", filename=path.name)
     raise HTTPException(status_code=404, detail="Report not found")
 
 

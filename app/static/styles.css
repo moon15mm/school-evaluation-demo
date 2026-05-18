@@ -543,13 +543,31 @@ textarea {
   background: #edf2f6;
   border-radius: 999px;
   height: 12px;
-  overflow: hidden;
+  overflow: visible;   /* allow threshold mark to peek */
+  position: relative;
 }
 
 .bar > span {
   background: linear-gradient(90deg, var(--teal), var(--blue));
+  border-radius: 999px;
   display: block;
   height: 100%;
+  overflow: hidden;
+}
+
+/* خط العتبة 75% في شريط المجال */
+.bar .threshold-mark {
+  background: var(--amber);
+  height: 160%;
+  opacity: 0.7;
+  position: absolute;
+  top: -30%;
+  width: 2px;
+}
+
+/* صف مجال دون العتبة — اسم أحمر */
+.domain-row.below-threshold > strong {
+  color: var(--red);
 }
 
 .item-list {
@@ -847,6 +865,33 @@ textarea {
   height: 58%;
   top: 21%;
 }
+
+/* خط عتبة الانطلاق 75% */
+.dual-bars .threshold-line {
+  background: var(--amber);
+  height: 100%;
+  opacity: 0.6;
+  position: absolute;
+  top: 0;
+  width: 2px;
+}
+
+/* صف مجال دون العتبة */
+.chart-row.below-threshold strong {
+  color: var(--red);
+}
+
+/* شارة الفرق */
+.delta-pill {
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.delta-pill.up   { background: #e6f4ef; color: var(--teal); }
+.delta-pill.down { background: #fef2f2; color: var(--red);  }
 
 .timeline-chart {
   display: grid;
@@ -1941,4 +1986,452 @@ textarea {
     gap: 14px;
     padding: 18px;
   }
+}
+
+/* ── النظام المحسّن v2 ─────────────────────────────────── */
+
+.system-toggle-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 6px;
+}
+
+.toggle-btn {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 7px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  color: var(--muted);
+  transition: all 0.18s;
+}
+
+.toggle-btn.toggle-active {
+  background: var(--teal);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(15,118,110,0.25);
+}
+
+/* PDF upload box */
+.pdf-upload-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.pdf-upload-icon { font-size: 1.1rem; }
+.pdf-read-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f0fdf9;
+  border: 1.5px solid #0f766e;
+  color: #0f766e;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.pdf-read-btn:hover:not(:disabled) { background: #0f766e; color: #fff; }
+.pdf-read-btn:disabled { opacity: 0.6; cursor: wait; }
+.pdf-read-status {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  border-radius: 6px;
+  padding: 6px 10px;
+  flex: 1;
+  min-width: 0;
+}
+.pdf-read-status.success { background: #d1fae5; color: #065f46; }
+.pdf-read-status.warn    { background: #fef9c3; color: #713f12; }
+.pdf-read-status.error   { background: #fee2e2; color: #991b1b; }
+
+.v2-badge {
+  background: linear-gradient(135deg, #0f766e, #255b8f);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 8px 14px;
+  border-radius: 8px;
+  margin-bottom: 14px;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+/* ── معلومات المدرسة (الاسم + المرحلة) ── */
+.school-info-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+.school-name-label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: 0.9rem; }
+.school-level-label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: 0.9rem; white-space: nowrap; }
+.school-level-label select {
+  height: 38px;
+  padding: 0 10px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  background: #f8fafc;
+  color: #1e293b;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.school-level-label select:focus { outline: none; border-color: #0f766e; }
+@media (max-width: 540px) {
+  .school-info-row { grid-template-columns: 1fr; }
+}
+
+.domain-scores-fieldset {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+
+.domain-scores-fieldset legend {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--teal);
+  padding: 0 6px;
+}
+
+.domain-scores-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.domain-scores-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.domain-scores-grid input {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 1rem;
+  text-align: center;
+}
+
+.v2-submit-btn {
+  background: linear-gradient(135deg, #0f766e, #255b8f);
+}
+
+/* نتائج v2 */
+.v2-result-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 16px;
+}
+
+.v2-classification-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: linear-gradient(135deg, #0f766e11, #255b8f11);
+  border: 1px solid var(--teal);
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+}
+
+.v2-classification-label {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--teal);
+}
+
+.v2-overall-score {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.v2-domain-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.v2-domain-name {
+  width: 160px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.v2-bar-track {
+  flex: 1;
+  height: 12px;
+  background: var(--bg);
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.v2-bar-fill {
+  height: 100%;
+  background: var(--teal);
+  border-radius: 6px;
+  transition: width 0.5s ease;
+}
+
+.v2-bar-fill.below {
+  background: var(--amber);
+}
+
+.v2-score-num {
+  width: 48px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--ink);
+  text-align: left;
+}
+
+.v2-section-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--teal);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 6px;
+  margin: 16px 0 10px;
+}
+
+.v2-target-card {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  border-right: 3px solid var(--teal);
+}
+
+.v2-target-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.88rem;
+  margin-bottom: 4px;
+}
+
+.v2-indicator-code {
+  background: var(--teal);
+  color: #fff;
+  border-radius: 5px;
+  padding: 2px 7px;
+  font-size: 0.78rem;
+  font-family: monospace;
+  flex-shrink: 0;
+}
+
+.v2-target-action {
+  font-size: 0.83rem;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.v2-score-arrow {
+  font-size: 0.8rem;
+  color: var(--blue);
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.v2-prediction-box {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: var(--blue-soft);
+  border: 1px solid var(--blue);
+  border-radius: 10px;
+  padding: 14px;
+  margin-top: 12px;
+}
+
+.v2-pred-item {
+  flex: 1;
+  min-width: 120px;
+  text-align: center;
+}
+
+.v2-pred-value {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--blue);
+}
+
+.v2-pred-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.v2-confidence-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+  margin-top: 6px;
+  overflow: hidden;
+}
+
+.v2-confidence-fill {
+  height: 100%;
+  background: var(--teal);
+  border-radius: 3px;
+}
+
+/* ── شواهد checklist inside improvement plan target cards ────────────── */
+.v2-evidence-checklist {
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.v2-evidence-checklist > summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  list-style: none;
+  user-select: none;
+}
+
+.v2-evidence-checklist > summary::-webkit-details-marker { display: none; }
+
+.ev-summary-text {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--teal);
+  white-space: nowrap;
+}
+
+.ev-mini-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.ev-mini-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--teal);
+  transition: width 0.4s ease;
+}
+
+.v2-evidence-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.v2-evidence-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.ev-achieved {
+  background: var(--green-soft);
+  color: #1a5c3a;
+}
+
+.ev-missing {
+  background: #fff4f4;
+  color: var(--red);
+}
+
+.ev-check {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  margin-top: 1px;
+}
+
+/* ── مكتبة الشواهد: قائمة الشواهد المطلوبة داخل المجلد ─────────────── */
+.folder-evidence-required {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.ev-required-item {
+  background: var(--blue-soft);
+  border-radius: 6px;
+  color: var(--ink);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  margin: 0;
+  padding: 4px 8px;
+}
+
+.ev-required-item:first-child { border-right: 3px solid var(--teal); }
+
+.ev-item-achieved { background: #edf7f3; border-right: 3px solid var(--teal) !important; }
+.ev-item-missing  { background: #fff5f5; border-right: 3px solid var(--red) !important; }
+
+.ev-check-badge {
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.ev-num {
+  background: var(--teal);
+  border-radius: 50%;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.68rem;
+  font-weight: 700;
+  width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.ev-required-item { display: flex; align-items: flex-start; gap: 6px; }
+
+/* تمييز مجال متابعة الأداء الأسبوعي بلون مختلف */
+.library-folder[class*="متابعة"] .folder-title strong,
+.library-folder .folder-indicator:contains("متابعة") {
+  color: var(--amber);
+}
+
+@media (max-width: 600px) {
+  .domain-scores-grid { grid-template-columns: 1fr; }
+  .v2-domain-name { width: 120px; }
 }

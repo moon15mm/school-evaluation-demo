@@ -8,24 +8,32 @@ from pydantic import BaseModel, Field
 
 
 DomainKey = Literal[
+    # ── المجالات الأربعة الرسمية ETEC ────────────────────────
+    "school_management",
+    "teaching_learning",
+    "learning_outcomes",
+    "school_environment",
+    # ── المجالات القديمة (للتوافق مع الإصدارات السابقة) ─────
     "leadership",
     "teaching",
-    "learning_outcomes",
     "student_support",
-    "school_environment",
     "assessment",
     "partnership",
 ]
 
 
-DOMAIN_LABELS: dict[DomainKey, str] = {
-    "leadership": "القيادة المدرسية",
-    "teaching": "جودة التعليم والتعلم",
-    "learning_outcomes": "نواتج التعلم",
-    "student_support": "الدعم الطلابي",
+DOMAIN_LABELS: dict[str, str] = {
+    # ETEC v2
+    "school_management":  "الإدارة المدرسية",
+    "teaching_learning":  "التعليم والتعلم",
+    "learning_outcomes":  "نواتج التعلم",
     "school_environment": "البيئة المدرسية",
-    "assessment": "التقويم والمتابعة",
-    "partnership": "الشراكة المجتمعية",
+    # Legacy
+    "leadership":   "القيادة المدرسية",
+    "teaching":     "جودة التعليم والتعلم",
+    "student_support": "الدعم الطلابي",
+    "assessment":   "التقويم والمتابعة",
+    "partnership":  "الشراكة المجتمعية",
 }
 
 
@@ -305,6 +313,7 @@ class VisitRecord(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
     school_name: str
+    school_level: str = "ثانوي"
     pdf_filename: str | None = None
     previous_report_excerpt: str
     report_profile: SchoolReportProfile | None = None

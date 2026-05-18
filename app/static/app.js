@@ -17,6 +17,12 @@ let latestImpactRecords = [];
 let latestImpactAdvice = null;
 let latestCouncilEvents = [];
 let currentUser = null;
+let latestV2Data = null;   // آخر نتيجة تحليل v2 — تُستخدم لتحديث التبويبات
+// ─── استعادة بيانات v2 من localStorage عند تحديث الصفحة ────────────────
+try {
+  const _stored = localStorage.getItem('latestV2Data');
+  if (_stored) latestV2Data = JSON.parse(_stored);
+} catch(_e) {}
 
 fetch("/api/health")
   .then((response) => response.json())
@@ -70,13 +76,18 @@ if (logoutBtn) {
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const button = form.querySelector("button");
+  const button = form.querySelector("button[type=submit]");
+  const originalText = button.textContent;
   button.disabled = true;
-  button.textContent = "جاري عقد جلسة الوكلاء...";
+  button.textContent = "جاري التحليل...";
+
+  // تأكد من إرسال has_previous بشكل صحيح
+  const hasPrev = document.getElementById("hasPreviousCheck")?.checked;
+  const payload = new FormData(form);
+  payload.set("has_previous", hasPrev ? "true" : "false");
 
   try {
-    const payload = new FormData(form);
-    const response = await fetch("/api/analyze", {
+    const response = await fetch("/api/v2/analyze", {
       method: "POST",
       body: payload,
     });
@@ -85,13 +96,17 @@ form.addEventListener("submit", async (event) => {
       throw new Error(error.detail || "تعذر تشغيل النظام");
     }
     const data = await response.json();
-    renderDashboard(data.visit, data.report_url);
+    latestV2Data = data;
+    try { localStorage.setItem('latestV2Data', JSON.stringify(data)); } catch(_e) {}
+    renderV2Result(data);
+    renderV2Dashboard(data);      // عرض التبويبات الكاملة بالنظام الجديد
+    await loadWorkspace();        // تحديث الشواهد وملف الأثر في الخلفية
     loadMemorySummary();
   } catch (error) {
     dashboard.innerHTML = `<div class="empty-state"><h2>تعذر تشغيل النظام</h2><p>${escapeHtml(error.message)}</p></div>`;
   } finally {
     button.disabled = false;
-    button.textContent = "تشغيل النظام كاملًا";
+    button.textContent = originalText;
   }
 });
 
@@ -210,8 +225,22 @@ function setCurrentUser(user) {
   document.body.classList.toggle("can-manage-users", Boolean(user?.can_manage_users));
   if (userPill) {
     userPill.style.display = user ? "block" : "none";
-    userPill.textContent = user ? `${user.display_name} | ${user.role}` : "";
+    userPill.textContent = user ? `${displayUserName(user)} | ${user.role}` : "";
   }
+}
+
+function displayUserName(user) {
+  const name = String(user?.display_name || "").trim();
+  if (name && !name.includes("?") && !/[طظ][\u0080-\u00ff]/.test(name)) {
+    return name;
+  }
+  if (user?.role === "admin" || user?.can_manage_users) {
+    return "مدير النظام";
+  }
+  if (user?.role === "demo" || user?.can_write === false) {
+    return "مستخدم تجريبي";
+  }
+  return user?.username || "مستخدم";
 }
 
 function showEvidenceResult(type, message) {
@@ -283,14 +312,679 @@ async function loadWorkspace() {
     if (schoolInput && !schoolInput.value.trim() && rememberedSchool && rememberedSchool !== "Autonomous School Evaluation & Improvement System") {
       schoolInput.value = rememberedSchool;
     }
-    if (data.has_memory && data.active_visit) {
-      renderDashboard(data.active_visit, data.dashboard?.report_url || `/api/reports/${data.active_visit.id}`, data.dashboard, latestEvidenceReviews, latestEvidenceLibrary, latestImpactRecords);
+    if (latestV2Data) {
+      // هل تم عرض لوحة التبويبات مسبقاً في هذه الجلسة؟
+      const libEl  = dashboard.querySelector('[data-field="evidenceLibrary"]');
+      if (!libEl) {
+        // ── الصفحة تحمّل من جديد (تحديث) — أعد رسم اللوحة الكاملة ──────
+        renderV2Dashboard(latestV2Data);
+        // بعد renderV2Dashboard يتم الاستعادة الكاملة، نخرج مبكراً
+        return;
+      }
+      // تحديث تبويبي الشواهد والأثر فقط — بقية التبويبات مُعبّأة من v2
+      const deskEl = dashboard.querySelector('[data-field="evidenceDesk"]');
+      const impactEl = dashboard.querySelector('[data-field="impactBoard"]');
+      const councilEl = dashboard.querySelector('[data-field="liveCouncil"]');
+      fillEvidenceLibrary(libEl, v2MergeEvidenceLibrary(latestV2Data, latestEvidenceLibrary));
+      if (deskEl)   fillEvidenceDesk(deskEl, latestEvidenceReviews);
+      if (impactEl) fillImpactBoard(impactEl, latestImpactRecords);
+      if (councilEl) fillLiveCouncil(councilEl, latestCouncilEvents);
+    } else if (data.has_memory && data.active_visit) {
+      // كشف نوع الزيارة: v2 تستخدم مفاتيح ETEC الأربعة
+      const _V2_KEYS = new Set(["school_management","teaching_learning","learning_outcomes","school_environment"]);
+      const _isV2 = (data.active_visit.domains || []).some(d => _V2_KEYS.has(d.key));
+      if (_isV2) {
+        // زيارة v2 — أعد بناء اللوحة من بيانات الذاكرة
+        // خريطة رمز المؤشر → مجال ETEC
+        const _CODE_DOMAIN = {1:"school_management",2:"teaching_learning",3:"learning_outcomes",4:"school_environment"};
+        const _DOM_AR = {school_management:"الإدارة المدرسية",teaching_learning:"التعليم والتعلم",learning_outcomes:"نواتج التعلم",school_environment:"البيئة المدرسية"};
+        // تطبيع المجالات إلى v2 format
+        const _etecDomains = ["school_management","teaching_learning","learning_outcomes","school_environment"];
+        const _domainMap = {};
+        (data.active_visit.domains||[]).forEach(d => { if(_etecDomains.includes(d.key)) _domainMap[d.key]=d; });
+        const _normDomains = _etecDomains.map(k => {
+          const d = _domainMap[k] || {};
+          const sc = d.current_score ?? 0;
+          return { domain_key:k, label:_DOM_AR[k], score:sc, below_threshold: sc < 75 };
+        });
+        // بناء targets مع تصحيح domain_key من رمز المؤشر
+        const _targets = (data.active_visit.plan||[]).map(a => {
+          const code = a.success_metric?.match(/\d+-\d+-\d+-\d+/)?.[0] || "";
+          const prefix = parseInt(code.split("-")[0]) || 0;
+          const dk = _CODE_DOMAIN[prefix] || a.domain || "learning_outcomes";
+          return { domain_key:dk, indicator_code:code, indicator_title:a.title,
+            evidence_required:a.steps||[], achieved_evidence:[], missing_evidence:[] };
+        });
+        const _minV2 = { ...data.active_visit,
+          plan: { targets: _targets, summary: "", weeks_to_visit_estimate: 8 },
+          analysis: {
+            domain_scores: _normDomains,
+            weaknesses: data.active_visit.weaknesses || [],
+            overall_score: _normDomains.reduce((s,d)=>s+d.score,0) / Math.max(_normDomains.length,1),
+          },
+          prediction: data.active_visit.prediction || {},
+          simulation_questions: data.active_visit.simulation || [],
+        };
+        latestV2Data = _minV2;
+        try { localStorage.setItem('latestV2Data', JSON.stringify(_minV2)); } catch(_e) {}
+        renderV2Dashboard(_minV2);
+      } else {
+        renderDashboard(data.active_visit, data.dashboard?.report_url || `/api/reports/${data.active_visit.id}`, data.dashboard, latestEvidenceReviews, latestEvidenceLibrary, latestImpactRecords);
+      }
     }
   } catch {
     // Keep the start screen if memory is not available.
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+//  renderV2Dashboard — يُعبّئ جميع التبويبات بالبيانات الجديدة (ETEC v2)
+// ═══════════════════════════════════════════════════════════════════════
+function renderV2Dashboard(data) {
+  const view = template.content.cloneNode(true);
+  const pred = data.prediction || {};
+  const analysis = data.analysis || { domain_scores: [], weaknesses: [], overall_score: 0 };
+  const plan = data.plan || { targets: [], summary: "", weeks_to_visit_estimate: 8 };
+
+  // ── المقاييس العلوية ────────────────────────────────────────────────
+  view.querySelector('[data-field="expected"]').textContent    = `${pred.overall_predicted ?? 0}/100`;
+  view.querySelector('[data-field="confidence"]').textContent  = `${Math.round((pred.confidence ?? 0) * 100)}%`;
+  const gain = pred.overall_gain ?? 0;
+  view.querySelector('[data-field="improvement"]').textContent = `${gain >= 0 ? "+" : ""}${Number(gain).toFixed(1)}`;
+
+  // ── تبويب: النظرة العامة ────────────────────────────────────────────
+  v2FillProgressBoard(view.querySelector('[data-field="progressBoard"]'), data);
+  v2FillDomainList(view.querySelector('[data-field="domains"]'), data);
+  v2FillWeaknesses(view.querySelector('[data-field="weaknesses"]'), analysis.weaknesses);
+  fillScenarios(view.querySelector('[data-field="scenarios"]'), pred.scenarios);
+
+  // ── تبويب: التقييم الخارجي ─────────────────────────────────────────
+  v2FillExternalReadiness(view.querySelector('[data-field="externalReadiness"]'), data);
+  v2FillSimulation(view.querySelector('[data-field="simulation"]'), data.simulation_questions);
+
+  // ── تبويب: الشواهد — مزج مجلدات ETEC من بيانات v2 مع الذاكرة ────────
+  const mergedLibrary = v2MergeEvidenceLibrary(data, latestEvidenceLibrary);
+  fillEvidenceLibrary(view.querySelector('[data-field="evidenceLibrary"]'), mergedLibrary);
+  fillEvidenceDesk(view.querySelector('[data-field="evidenceDesk"]'), latestEvidenceReviews);
+
+  // ── تبويب: ملف الأثر (من الذاكرة) ─────────────────────────────────
+  fillImpactAgent(view.querySelector('[data-field="impactAgent"]'), latestImpactAdvice);
+  fillImpactBoard(view.querySelector('[data-field="impactBoard"]'), latestImpactRecords);
+
+  // ── تبويب: الخطة والمهام ────────────────────────────────────────────
+  v2FillPlan(view.querySelector('[data-field="plan"]'), plan);
+  v2FillTasks(view.querySelector('[data-field="tasks"]'), plan);
+
+  // ── تبويب: الوكلاء والبروتوكول ─────────────────────────────────────
+  fillLiveCouncil(view.querySelector('[data-field="liveCouncil"]'), latestCouncilEvents);
+  v2FillCouncil(view.querySelector('[data-field="council"]'), data);
+  v2FillProtocol(view.querySelector('[data-field="protocol"]'), data);
+  v2FillForms(view.querySelector('[data-field="forms"]'), data);
+  v2FillExecution(view.querySelector('[data-field="execution"]'), data);
+
+  // ── تبويب: التقارير والذاكرة ────────────────────────────────────────
+  v2FillReportProfile(view.querySelector('[data-field="reportProfile"]'), data);
+  fillLearning(
+    view.querySelector('[data-field="learning"]'),
+    [pred.confidence_explanation, pred.caveat],
+    asArray(plan.targets).slice(0, 3).map(t => ({
+      title: t.indicator_title,
+      expected_gain: t.target_score - t.current_score,
+      due_in_days: (plan.weeks_to_visit_estimate || 8) * 7,
+    }))
+  );
+
+  // ── روابط وأزرار ────────────────────────────────────────────────────
+  view.querySelector('[data-field="report"]').style.display        = "none";
+  view.querySelector('[data-field="executionDownload"]').style.display = "none";
+  view.querySelector('[data-field="evidenceDossier"]').style.display  = "none";
+  view.querySelector('[data-field="impactPackage"]').style.display    = "none";
+
+  dashboard.innerHTML = "";
+  dashboard.dataset.visitId = data.visit_id || "";
+  dashboard.appendChild(view);
+  setupDashboardTabs("overview");
+
+  // أزرار الشواهد والأثر
+  const buildDossierBtn = dashboard.querySelector("#buildDossierBtn");
+  if (buildDossierBtn) buildDossierBtn.addEventListener("click", buildEvidenceDossier);
+  const buildImpactBtn = dashboard.querySelector("#buildImpactBtn");
+  if (buildImpactBtn) buildImpactBtn.addEventListener("click", buildImpactPackage);
+  const impactAgentBtn = dashboard.querySelector("#impactAgentBtn");
+  if (impactAgentBtn) impactAgentBtn.addEventListener("click", loadImpactAgentAdvice);
+  setupAdminControls();
+}
+
+// ── النظرة العامة: بطاقة التقدم ──────────────────────────────────────
+function v2FillProgressBoard(container, data) {
+  const a    = data.analysis  || {};
+  const pred = data.prediction || {};
+  const prog = data.progress;
+
+  const domainScores = asArray(a.domain_scores);
+  const domainChart = domainScores.map(d => {
+    const below = d.below_threshold;
+    const prev  = prog ? (prog.domain_changes[d.domain_key]?.previous || 0) : 0;
+    const delta = prog ? (prog.domain_changes[d.domain_key]?.delta    || 0) : 0;
+    const deltaHtml = prog && prev > 0
+      ? `<span class="delta-pill ${delta >= 0 ? "up" : "down"}">${delta >= 0 ? "+" : ""}${Number(delta).toFixed(1)}</span>`
+      : "";
+    return `
+      <div class="chart-row${below ? " below-threshold" : ""}">
+        <strong>${escapeHtml(d.label)}</strong>
+        <div class="dual-bars">
+          ${prev > 0 ? `<span class="previous" style="width:${prev}%"></span>` : ""}
+          <span class="current" style="width:${d.score}%"></span>
+          <span class="threshold-line" style="left:75%" title="عتبة الانطلاق"></span>
+        </div>
+        <em>${d.score}%${below ? " ⚠" : ""}</em>
+        ${deltaHtml}
+      </div>`;
+  }).join("");
+
+  const flags = prog ? asArray(prog.flags).map(f =>
+    `<p style="color:var(--amber);font-size:0.82rem;margin:4px 0">⚠ ${escapeHtml(f)}</p>`).join("") : "";
+
+  const scenarioChart = asArray(pred.scenarios).map(s => `
+    <div class="scenario-bar">
+      <span>${escapeHtml(s.name)}</span>
+      <div><i style="width:${Number(s.score || 0)}%"></i></div>
+      <strong>${formatScore(s.score)}</strong>
+    </div>`).join("");
+
+  container.className = "progress-board";
+  container.innerHTML = `
+    <article class="progress-hero live-card">
+      <div class="donut" style="--value:${a.overall_score || 0}">
+        <strong>${a.overall_score || 0}%</strong>
+      </div>
+      <div>
+        <span>${escapeHtml(a.classification_label || "")}</span>
+        <p>${escapeHtml(a.description || "")}</p>
+      </div>
+    </article>
+    <article class="progress-card live-card">
+      <span>الدرجة المتوقعة</span>
+      <strong>${pred.overall_predicted || 0}/100</strong>
+    </article>
+    <article class="progress-card live-card">
+      <span>مستوى الثقة</span>
+      <strong>${Math.round((pred.confidence || 0) * 100)}%</strong>
+    </article>
+    <article class="chart-panel">
+      <div class="chart-title">
+        <h3>المجالات الأربعة الرسمية</h3>
+        <span>الخط الأصفر = عتبة 75%</span>
+      </div>
+      <div class="domain-chart">${domainChart}</div>
+      ${flags}
+    </article>
+    <article class="chart-panel">
+      <div class="chart-title"><h3>سيناريوهات الدرجة</h3><span>0-100</span></div>
+      <div class="scenario-chart">${scenarioChart}</div>
+    </article>`;
+}
+
+// ── النظرة العامة: مقارنة المجالات التفصيلية ─────────────────────────
+function v2FillDomainList(container, data) {
+  const domainScores = asArray(data.analysis.domain_scores);
+  const prog = data.progress;
+  container.innerHTML = domainScores.map(d => {
+    const prev  = prog ? (prog.domain_changes[d.domain_key]?.previous || 0) : 0;
+    const delta = prog ? (prog.domain_changes[d.domain_key]?.delta    || 0) : 0;
+    const prevLabel = prev > 0 ? `السابق ${formatScore(prev)} | ` : "";
+    return `
+      <div class="domain-row${d.below_threshold ? " below-threshold" : ""}">
+        <strong>${escapeHtml(d.label)}</strong>
+        <div class="bar" title="${d.score}/100">
+          <span style="width:${d.score}%"></span>
+          <span class="threshold-mark" style="left:75%"></span>
+        </div>
+        <span class="domain-score">${prevLabel}الحالي ${formatScore(d.score)} | ${d.below_threshold ? `<span style="color:var(--red)">⚠ دون العتبة بـ ${(75 - d.score).toFixed(1)} نقطة</span>` : `<span style="color:var(--teal)">✅ فوق العتبة</span>`}</span>
+      </div>`;
+  }).join("");
+}
+
+// ── النظرة العامة: نقاط الضعف ────────────────────────────────────────
+function v2FillWeaknesses(container, weaknesses) {
+  container.className = "item-list";
+  weaknesses = asArray(weaknesses);
+  if (!weaknesses.length) {
+    container.innerHTML = `<article class="item"><p>✅ جميع المجالات فوق عتبة الانطلاق — لا توجد نقاط ضعف حرجة.</p></article>`;
+    return;
+  }
+  container.innerHTML = weaknesses.map(w => `
+    <article class="item">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="tag high">${escapeHtml(w.indicator_code || "")}</span>
+        <strong style="font-size:0.88rem">${escapeHtml(w.indicator_title || "")}</strong>
+      </div>
+      <p style="font-size:0.8rem;color:var(--muted);margin:4px 0">
+        المجال: <strong>${escapeHtml(w.domain_key || "")}</strong> |
+        الدرجة: <strong style="color:var(--red)">${w.score}%</strong> |
+        الفجوة: <strong style="color:var(--red)">${w.gap} نقطة</strong>
+      </p>
+      <p style="font-size:0.8rem">${escapeHtml(w.impact || "")}</p>
+    </article>`).join("");
+}
+
+// ── تبويب التقييم الخارجي ─────────────────────────────────────────────
+function v2FillExternalReadiness(container, data) {
+  const a    = data.analysis   || {};
+  const pred = data.prediction || {};
+  const readinessPct = Math.round(pred.overall_predicted || 0);
+  const guaranteeLevel = readinessPct >= 80 ? "excellence_ready"
+                       : readinessPct >= 70 ? "ready"
+                       : readinessPct >= 60 ? "promising"
+                       : "high_risk";
+
+  const domainScores = asArray(a.domain_scores);
+  const targets = asArray(data.plan.targets);
+
+  const dimensionsHtml = domainScores.map(d => {
+    const relActions = targets.filter(t => t.domain_key === d.domain_key).slice(0, 3);
+    const actionsHtml = relActions.map(t => `<li>${escapeHtml(t.action)}</li>`).join("");
+    const riskText   = d.below_threshold
+      ? `الدرجة ${d.score}% دون عتبة الانطلاق (75%) — خطر رفع تقرير ضعف.`
+      : `الدرجة فوق العتبة — حافظ على التوثيق.`;
+    const excText    = d.below_threshold ? "رفع الدرجة بتحقيق الشواهد الناقصة" : "توثيق الاستدامة وإظهار الأثر";
+    return `
+      <article class="external-dimension">
+        <div>
+          <strong>${escapeHtml(d.label)}</strong>
+          <span>${formatScore(d.score)}%</span>
+        </div>
+        <div class="folder-readiness"><i style="width:${Number(d.score || 0)}%"></i></div>
+        <p><b>علامة الخطر:</b> ${escapeHtml(riskText)}</p>
+        <p><b>علامة التميز:</b> ${escapeHtml(excText)}</p>
+        ${actionsHtml ? `<ul class="steps">${actionsHtml}</ul>` : ""}
+      </article>`;
+  }).join("");
+
+  container.className = "external-readiness";
+  container.innerHTML = `
+    <article class="external-hero ${escapeHtml(guaranteeLevel)}">
+      <div class="donut" style="--value:${readinessPct}">
+        <strong>${readinessPct}%</strong>
+      </div>
+      <div>
+        <span>${guaranteeLabel(guaranteeLevel)}</span>
+        <p>${escapeHtml(pred.confidence_explanation || "")} | ${escapeHtml(pred.caveat || "")}</p>
+      </div>
+    </article>
+    <section class="external-grid">${dimensionsHtml}</section>
+    <article class="item protocol-head" style="margin-top:16px">
+      <h3>بروتوكول ضمان النجاح</h3>
+      <ul class="steps">
+        <li>وثّق الشواهد الناقصة قبل الزيارة بأسبوعين على الأقل.</li>
+        <li>راجع قائمة شواهد كل مؤشر ضعيف وتأكد من اكتمالها.</li>
+        <li>أجرِ محاكاة داخلية بالأسئلة المتوقعة قبل يومين من الزيارة.</li>
+        <li>جهّز ملف الأدلة مرتباً حسب المجال ثم المؤشر ثم الشاهد.</li>
+      </ul>
+    </article>`;
+}
+
+// ── تبويب التقييم الخارجي: أسئلة المحاكاة ───────────────────────────
+function v2FillSimulation(container, questions) {
+  container.className = "item-list";
+  questions = asArray(questions);
+  if (!questions.length) {
+    container.innerHTML = `<article class="item"><p>لا توجد أسئلة محاكاة لهذه الزيارة.</p></article>`;
+    return;
+  }
+  container.innerHTML = questions.map(q => {
+    const evHtml = asArray(q.expected_evidence).map(e => `<span>${escapeHtml(e)}</span>`).join("");
+    return `
+      <article class="item">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+          <span class="v2-indicator-code" style="background:var(--blue)">${escapeHtml(q.indicator_code || "—")}</span>
+          <span style="font-size:0.78rem;color:var(--muted)">${escapeHtml(q.domain || "")}</span>
+        </div>
+        <h3 style="font-size:0.88rem;margin:4px 0">${escapeHtml(q.question)}</h3>
+        ${evHtml ? `<div class="signal-strip" style="margin-top:8px">${evHtml}</div>` : ""}
+      </article>`;
+  }).join("");
+}
+
+// ── تبويب الخطة: أهداف التحسين مع الشواهد ───────────────────────────
+function v2FillPlan(container, plan) {
+  container.className = "item-list";
+  const targets = asArray(plan.targets);
+  if (!targets.length) {
+    container.innerHTML = `<article class="item"><p>لا توجد أهداف تحسين.</p></article>`;
+    return;
+  }
+  const summaryHtml = `
+    <article class="item protocol-head">
+      <h3>${escapeHtml(plan.summary || "")}</h3>
+      <p>المهلة المقدرة: <strong>${plan.weeks_to_visit_estimate || 8} أسابيع</strong></p>
+    </article>`;
+  const targetsHtml = targets.map(t => {
+    const achieved = asArray(t.achieved_evidence);
+    const missing  = asArray(t.missing_evidence);
+    const total    = achieved.length + missing.length;
+    const pct      = total ? Math.round(achieved.length / total * 100) : 0;
+    const priorityCls = t.domain_key === "learning_outcomes" ? "urgent"
+                      : t.domain_key === "school_management"  ? "high" : "medium";
+    const checklistHtml = total > 0 ? `
+      <details class="v2-evidence-checklist">
+        <summary>
+          <span class="ev-summary-text">الشواهد: ${achieved.length}/${total} متحقق</span>
+          <div class="ev-mini-bar"><div class="ev-mini-fill" style="width:${pct}%"></div></div>
+        </summary>
+        <ul class="v2-evidence-list">
+          ${achieved.map(e => `<li class="ev-achieved"><span class="ev-check">✅</span>${escapeHtml(e)}</li>`).join("")}
+          ${missing.map(e  => `<li class="ev-missing"><span class="ev-check">❌</span>${escapeHtml(e)}</li>`).join("")}
+        </ul>
+      </details>` : "";
+    return `
+      <article class="item">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+          <span class="tag ${escapeHtml(priorityCls)}">#${t.rank}</span>
+          <span class="v2-indicator-code">${escapeHtml(t.indicator_code)}</span>
+          <strong style="font-size:0.88rem">${escapeHtml(t.indicator_title)}</strong>
+        </div>
+        <div class="v2-score-arrow" style="margin:6px 0">${t.current_score}% ← ${t.target_score}%</div>
+        <p style="font-size:0.82rem;margin:4px 0">${escapeHtml(t.action)}</p>
+        ${checklistHtml}
+      </article>`;
+  }).join("");
+  container.innerHTML = summaryHtml + targetsHtml;
+}
+
+// ── تبويب الخطة: توزيع المهام ────────────────────────────────────────
+function v2FillTasks(container, plan) {
+  container.className = "item-list";
+  const targets = asArray(plan.targets);
+  if (!targets.length) {
+    container.innerHTML = `<article class="item"><p>المهام تُولَّد بعد تعيين مسؤولين لكل مؤشر.</p></article>`;
+    return;
+  }
+  const weeks = plan.weeks_to_visit_estimate || 8;
+  const today = new Date();
+  container.innerHTML = targets.slice(0, 6).map((t, i) => {
+    const dueDate = new Date(today);
+    dueDate.setDate(today.getDate() + Math.ceil(weeks / targets.length) * (i + 1) * 7);
+    const dueDateStr = dueDate.toISOString().slice(0, 10);
+    const missing = asArray(t.missing_evidence).slice(0, 3);
+    return `
+      <article class="item task-item">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span class="v2-indicator-code">${escapeHtml(t.indicator_code)}</span>
+          <strong style="font-size:0.88rem">${escapeHtml(t.indicator_title)}</strong>
+        </div>
+        <p style="font-size:0.8rem;color:var(--muted);margin:4px 0">
+          مدير المدرسة | موعد التنفيذ: ${dueDateStr} | التحسين المستهدف: +${(t.target_score - t.current_score).toFixed(1)}%
+        </p>
+        ${missing.length ? `<ul class="steps" style="font-size:0.78rem;margin:6px 0">${missing.map(e => `<li>${escapeHtml(e)}</li>`).join("")}</ul>` : ""}
+        <div class="task-actions" style="opacity:0.6">
+          <button type="button" disabled>لم تبدأ</button>
+          <button type="button" disabled>قيد التنفيذ</button>
+          <button type="button" disabled>منجزة</button>
+        </div>
+      </article>`;
+  }).join("");
+}
+
+// ── تبويب الوكلاء: مجلس الوكلاء ─────────────────────────────────────
+function v2FillCouncil(container, data) {
+  container.className = "council-layout";
+  const weaknesses = asArray(data.analysis.weaknesses);
+  const targets    = asArray(data.plan.targets);
+  const turnsHtml  = weaknesses.slice(0, 4).map((w, i) => `
+    <article class="dialogue-turn">
+      <div>
+        <span class="round">مؤشر ${i + 1}</span>
+        <strong>${escapeHtml(w.indicator_code || "")} — وكيل التحليل</strong>
+      </div>
+      <h3>${escapeHtml(w.indicator_title || "")}</h3>
+      <p>${escapeHtml(w.impact || "")}</p>
+      <p><strong>التوصية:</strong> رفع الدرجة من ${w.score}% إلى ${Math.min(w.score + 15, 100)}% بتحقيق الشواهد الناقصة.</p>
+    </article>`).join("");
+  const decisionsHtml = targets.slice(0, 3).map(t => `
+    <article class="item">
+      <h3>${escapeHtml(t.indicator_title)}</h3>
+      <p>${escapeHtml(t.action)}</p>
+      <p><strong>المسؤول:</strong> مدير المدرسة | <strong>الهدف:</strong> ${t.target_score}%</p>
+      <p><strong>علامة النجاح:</strong> تحقيق ${asArray(t.missing_evidence).length} شاهد ناقص</p>
+    </article>`).join("");
+  container.innerHTML = `
+    <article class="item council-summary">
+      <h3>جلسة وكلاء ETEC</h3>
+      <p>تحليل ${asArray(data.analysis.domain_scores).length} مجالات رسمية — ${escapeHtml(data.framework || "")}</p>
+      <p><strong>الاتفاق النهائي:</strong> ${escapeHtml(data.plan.summary || "")}</p>
+    </article>
+    <div class="dialogue-list">${turnsHtml}</div>
+    <div class="item-list">${decisionsHtml}</div>`;
+}
+
+// ── تبويب الوكلاء: بروتوكول التميز ──────────────────────────────────
+function v2FillProtocol(container, data) {
+  container.className = "protocol-grid";
+  const targets  = asArray(data.plan.targets);
+  const weeks    = data.plan.weeks_to_visit_estimate || 8;
+  const pred     = data.prediction || {};
+  const stepsHtml = targets.slice(0, 4).map((t, i) => {
+    const phase = ["الأسبوع 1–2", "الأسبوع 2–4", "الأسبوع 4–6", "الأسبوع 6–8"][i] || `الأسبوع ${i * 2}–${i * 2 + 2}`;
+    const missingItems = asArray(t.missing_evidence).slice(0, 5).map(e => `<li>${escapeHtml(e)}</li>`).join("");
+    return `
+      <article class="item">
+        <span class="tag high-priority">${phase}</span>
+        <h3>${escapeHtml(t.indicator_code)} — ${escapeHtml(t.indicator_title)}</h3>
+        <ol class="steps">${missingItems}</ol>
+        <p><strong>بوابة الانتقال:</strong> إغلاق ${asArray(t.missing_evidence).length} شاهد ناقص</p>
+      </article>`;
+  }).join("");
+  container.innerHTML = `
+    <article class="item protocol-head">
+      <h3>بروتوكول التميز للزيارة القادمة</h3>
+      <p>الدرجة المستهدفة: <strong>${pred.overall_predicted || 0}/100</strong> | الوقت المتاح: ${weeks} أسابيع</p>
+      <ul class="steps">
+        <li>الالتزام بتحقيق جميع الشواهد الناقصة في كل مؤشر ضعيف.</li>
+        <li>توثيق التحسين بأدلة ملموسة: أرقام، صور، نتائج.</li>
+        <li>إشراك جميع منسوبي المدرسة في خطة التحسين.</li>
+        <li>مراجعة أسبوعية للتقدم على كل مؤشر.</li>
+      </ul>
+    </article>
+    ${stepsHtml}`;
+}
+
+// ── تبويب الوكلاء: النماذج التشغيلية ────────────────────────────────
+function v2FillForms(container, data) {
+  container.className = "forms-grid";
+  const targets = asArray(data.plan.targets).slice(0, 4);
+  container.innerHTML = targets.map(t => `
+    <article class="item">
+      <h3>نموذج متابعة: ${escapeHtml(t.indicator_code)}</h3>
+      <p>${escapeHtml(t.indicator_title)}</p>
+      <p><strong>مدير المدرسة</strong> | مراجعة أسبوعية</p>
+      <ul class="steps">
+        ${asArray(t.missing_evidence).slice(0, 4).map(e => `<li>${escapeHtml(e)}</li>`).join("")}
+      </ul>
+      <p><strong>قاعدة الإكمال:</strong> تحقيق جميع الشواهد المدرجة قبل موعد الزيارة.</p>
+    </article>`).join("") ||
+    `<article class="item"><p>النماذج التشغيلية تُولَّد عند تفعيل وكلاء التنفيذ.</p></article>`;
+}
+
+// ── تبويب الوكلاء: حزمة التنفيذ ─────────────────────────────────────
+function v2FillExecution(container, data) {
+  container.className = "execution-grid";
+  const targets = asArray(data.plan.targets);
+  const cycle = [
+    "رصد الدرجة الحالية لكل مؤشر وتوثيقها.",
+    "تحديد الشواهد الناقصة وتعيين مسؤول لكل شاهد.",
+    "تنفيذ الإجراءات التصحيحية وجمع الأدلة.",
+    "مراجعة أسبوعية وتحديث قائمة الشواهد.",
+    "جلسة مراجعة نهائية قبل الزيارة بأسبوع.",
+  ].map(item => `<li>${item}</li>`).join("");
+  const missionsHtml = targets.slice(0, 3).map(t => {
+    const artifacts = asArray(t.missing_evidence).slice(0, 3).map(e =>
+      `<li><strong>${escapeHtml(e)}</strong><span>شاهد مطلوب للمؤشر ${escapeHtml(t.indicator_code)}</span></li>`
+    ).join("");
+    return `
+      <article class="item">
+        <span class="tag high-priority">وكيل التنفيذ</span>
+        <h3>${escapeHtml(t.indicator_title)}</h3>
+        <ul class="artifact-list">${artifacts}</ul>
+        <p><strong>الخطوة البشرية التالية:</strong> ${escapeHtml(t.action)}</p>
+      </article>`;
+  }).join("");
+  container.innerHTML = `
+    <article class="item protocol-head"><h3>حزمة التنفيذ</h3>
+      <p>مبنية على ${targets.length} مؤشر بأولوية تحسين.</p>
+    </article>
+    <article class="item"><h3>دورة التشغيل</h3><ul class="steps">${cycle}</ul></article>
+    ${missionsHtml}`;
+}
+
+// ── تبويب التقارير: ملخص الزيارة ────────────────────────────────────
+function v2FillReportProfile(container, data) {
+  container.className = "report-profile";
+  const a = data.analysis || {};
+  const domainCardsHtml = asArray(a.domain_scores).map(d => `
+    <article class="item">
+      <h3>${escapeHtml(d.label)}: ${d.score}%</h3>
+      <p>${d.below_threshold ? "دون العتبة" : "فوق العتبة"} | ${d.below_threshold ? "يحتاج تحسين" : "جيد"}</p>
+    </article>`).join("");
+  const prioritiesHtml = asArray(data.plan.targets).slice(0, 6).map(t => `
+    <article class="item">
+      <span class="tag ${t.current_score < 60 ? "urgent" : "high"}">${t.current_score < 60 ? "حرج" : "مرتفع"}</span>
+      <h3>${escapeHtml(t.indicator_code)} - ${escapeHtml(t.indicator_title)}</h3>
+      <p>${escapeHtml(t.domain_key || "")} | الدرجة الحالية: ${t.current_score}%</p>
+      <p>${escapeHtml(t.action)}</p>
+    </article>`).join("");
+  container.innerHTML = `
+    <article class="item protocol-head">
+      <h3>${escapeHtml(data.school_name || "المدرسة")} | ${escapeHtml(data.school_level || "ثانوي")}</h3>
+      <p>الدرجة الكلية: <strong>${a.overall_score || 0}%</strong> | التصنيف: <strong>${escapeHtml(a.classification_label || "")}</strong></p>
+      <p>${escapeHtml(a.description || "")}</p>
+      <p style="font-size:0.8rem;color:var(--muted)">${escapeHtml(data.framework || "")}</p>
+    </article>
+    <div class="profile-domains">${domainCardsHtml}</div>
+    <div class="item-list">${prioritiesHtml}</div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  v2MergeEvidenceLibrary — يدمج مجلدات ETEC (من بيانات v2) مع الذاكرة
+// ═══════════════════════════════════════════════════════════════════════
+function v2MergeEvidenceLibrary(v2data, memLibrary) {
+  const _DOMAIN_LABEL = {
+    school_management:  "الإدارة المدرسية",
+    teaching_learning:  "التعليم والتعلم",
+    learning_outcomes:  "نواتج التعلم",
+    school_environment: "البيئة المدرسية",
+  };
+  const _DOMAIN_ORDER = {
+    "الإدارة المدرسية": 0, "التعليم والتعلم": 1,
+    "نواتج التعلم": 2,     "البيئة المدرسية": 3,
+    "متابعة الأداء الأسبوعي": 4,
+  };
+
+  // ── بناء مجلدات ETEC من خطة v2 ───────────────────────────────────────
+  const v2Folders = {};
+  const targets = asArray((v2data.plan || {}).targets);
+  targets.forEach(t => {
+    const domainAr = _DOMAIN_LABEL[t.domain_key] || t.domain_key;
+    const key = `${domainAr}::${t.indicator_code}`;
+
+    // اجمع الشواهد: المحققة ثم الناقصة ثم الكاملة كاحتياطي
+    const achieved = asArray(t.achieved_evidence);
+    const missing  = asArray(t.missing_evidence);
+    const required = asArray(t.evidence_required);
+    // استخدم القائمة الأكثر بيانات
+    let evidenceItems;
+    if (achieved.length + missing.length > 0) {
+      evidenceItems = achieved.concat(missing);
+    } else if (required.length > 0) {
+      evidenceItems = required;
+    } else {
+      evidenceItems = [];
+    }
+    // بناء نص الشواهد المرقّم
+    const reqText = evidenceItems.map((e, i) => `${i + 1}. ${e}`).join("\n");
+
+    v2Folders[key] = {
+      domain: domainAr,
+      indicator_code: t.indicator_code || "—",
+      indicator_title: t.indicator_title || "",
+      required_evidence: reqText,
+      evidence_items: evidenceItems,
+      achieved_evidence: achieved,
+      missing_evidence: missing,
+      destination_folder: `app/data/evidence/{visit_id}/${domainAr}/${t.indicator_code}`,
+      total: 0, suitable: 0, needs_edit: 0, insufficient: 0, reviews: [],
+      _v2: true,
+    };
+  });
+
+  // ── دمج الشواهد المحفوظة في الذاكرة داخل مجلدات ETEC ────────────────
+  const memFolders = {};
+  asArray((memLibrary || {}).folders).forEach(f => {
+    const k = `${f.domain}::${f.indicator_code}`;
+    memFolders[k] = f;
+  });
+
+  // دمج: مجلدات v2 + مجلدات الذاكرة (مع نقل شواهد المراجعات إلى المجلد الصح)
+  const merged = { ...v2Folders };
+  Object.entries(memFolders).forEach(([k, f]) => {
+    // تجاهل مجلدات "متابعة الأداء" — لا علاقة لها بنظام ETEC v2
+    if ((f.domain || "").includes("متابعة")) return;
+    if (merged[k]) {
+      // نقل الإحصاءات والمراجعات إلى المجلد المبني من v2
+      merged[k].total       = f.total;
+      merged[k].suitable    = f.suitable;
+      merged[k].needs_edit  = f.needs_edit;
+      merged[k].insufficient = f.insufficient;
+      merged[k].reviews     = f.reviews || [];
+      merged[k].destination_folder = f.destination_folder || merged[k].destination_folder;
+    } else {
+      merged[k] = f;   // مجلد ETEC من الذاكرة غير موجود في v2 حالياً
+    }
+  });
+
+  // ── ضمان وجود مجلد لكل مجال ETEC الأربعة دائماً ───────────────────────
+  const _etecDomainAr = ["الإدارة المدرسية","التعليم والتعلم","نواتج التعلم","البيئة المدرسية"];
+  const _etecKeyMap   = {school_management:"الإدارة المدرسية",teaching_learning:"التعليم والتعلم",
+                          learning_outcomes:"نواتج التعلم",school_environment:"البيئة المدرسية"};
+  // بناء خريطة مجال → درجة من domain_scores
+  const _domainScoreMap = {};
+  asArray((v2data.analysis || {}).domain_scores).forEach(d => {
+    const ar = _etecKeyMap[d.domain_key] || d.label;
+    if (ar) _domainScoreMap[ar] = d.score || 0;
+  });
+  // أضف مجلداً عاماً لكل مجال غير موجود بعد
+  _etecDomainAr.forEach(domainAr => {
+    const hasFolder = Object.values(merged).some(f => f.domain === domainAr);
+    if (!hasFolder) {
+      const score = _domainScoreMap[domainAr];
+      const scoreNote = score !== undefined ? ` — الدرجة الحالية: ${score}%` : "";
+      merged[`${domainAr}::عام`] = {
+        domain: domainAr, indicator_code: "—",
+        indicator_title: `شواهد مجال ${domainAr}`,
+        required_evidence: `ارفع الشواهد المرتبطة بهذا المجال${scoreNote}.`,
+        evidence_items: [], achieved_evidence: [], missing_evidence: [],
+        destination_folder: "", total: 0, suitable: 0, needs_edit: 0, insufficient: 0, reviews: [],
+      };
+    }
+  });
+
+  // ── ترتيب: المجالات الرسمية أولاً ────────────────────────────────────
+  const sorted = Object.values(merged).sort((a, b) => {
+    const oa = _DOMAIN_ORDER[a.domain] ?? 9;
+    const ob = _DOMAIN_ORDER[b.domain] ?? 9;
+    if (oa !== ob) return oa - ob;
+    return (a.indicator_code || "").localeCompare(b.indicator_code || "");
+  });
+
+  return {
+    folders: sorted,
+    total_reviews: (memLibrary || {}).total_reviews || 0,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  renderDashboard — النظام القديم (للزيارات المحفوظة بدون v2)
+// ═══════════════════════════════════════════════════════════════════════
 function renderDashboard(visit, reportUrl, dashboardStats = null, evidenceReviews = latestEvidenceReviews, evidenceLibrary = latestEvidenceLibrary, impactRecords = latestImpactRecords) {
   const view = template.content.cloneNode(true);
   const prediction = visit.prediction || {};
@@ -391,7 +1085,7 @@ function fillUsersPanel(panel, users) {
       (user) => `
         <article class="user-card">
           <div>
-            <strong>${escapeHtml(user.display_name)}</strong>
+            <strong>${escapeHtml(displayUserName(user))}</strong>
             <small>${escapeHtml(user.username)} | ${escapeHtml(user.role)} | ${user.can_write ? "تعديل" : "عرض فقط"}${user.can_manage_users ? " | إدارة مستخدمين" : ""}${user.can_clear_data ? " | تفريغ بيانات" : ""}</small>
           </div>
           <button type="button" class="danger-btn" data-delete-user="${escapeHtml(user.username)}">حذف</button>
@@ -493,16 +1187,23 @@ function fillProgressBoard(container, visit, stats) {
     .join("");
   const domainChart = domains
     .map((domain) => {
-      const current = Number(domain.current_score ?? 0);
+      const current  = Number(domain.current_score  ?? 0);
       const previous = Number(domain.previous_score ?? 0);
+      const delta    = current - previous;
+      const belowThreshold = current < 75;
+      const deltaLabel = previous > 0
+        ? `<span class="delta-pill ${delta >= 0 ? "up" : "down"}">${delta >= 0 ? "+" : ""}${delta.toFixed(1)}</span>`
+        : "";
       return `
-        <div class="chart-row">
+        <div class="chart-row${belowThreshold ? " below-threshold" : ""}">
           <strong>${escapeHtml(domain.label)}</strong>
           <div class="dual-bars">
-            <span class="previous" style="width:${previous}%"></span>
+            ${previous > 0 ? `<span class="previous" style="width:${previous}%"></span>` : ""}
             <span class="current" style="width:${current}%"></span>
+            <span class="threshold-line" style="left:75%" title="عتبة الانطلاق 75%"></span>
           </div>
-          <em>${formatScore(current)}</em>
+          <em>${formatScore(current)}%${belowThreshold ? " ⚠" : ""}</em>
+          ${deltaLabel}
         </div>
       `;
     })
@@ -1230,9 +1931,35 @@ function renderEvidenceFolder(folder) {
         <span>${escapeHtml(folder.indicator_code)} | ${folder.total} شاهد</span>
       </div>
       <p class="folder-indicator">${escapeHtml(folder.indicator_title)}</p>
-      <details class="folder-details">
-        <summary>المطلوب من الشواهد</summary>
-        <p>${escapeHtml(folder.required_evidence || "لم يحدد المطلوب لهذا البند.")}</p>
+      <details class="folder-details" open>
+        <summary>المطلوب من الشواهد (${
+          asArray(folder.evidence_items).length ||
+          (folder.required_evidence || "").split("\n").filter(l => l.trim()).length || 1
+        } بند)</summary>
+        <div class="folder-evidence-required">
+          ${(() => {
+            const achieved = asArray(folder.achieved_evidence);
+            const missing  = asArray(folder.missing_evidence);
+            const items    = asArray(folder.evidence_items);
+            if (achieved.length + missing.length > 0) {
+              // عرض مع ✅/❌ للمحقق والناقص
+              return achieved.map((e, i) =>
+                `<p class="ev-required-item ev-item-achieved"><span class="ev-check-badge">✅</span><span class="ev-num">${i+1}</span>${escapeHtml(e)}</p>`
+              ).join("") + missing.map((e, i) =>
+                `<p class="ev-required-item ev-item-missing"><span class="ev-check-badge">❌</span><span class="ev-num">${achieved.length+i+1}</span>${escapeHtml(e)}</p>`
+              ).join("");
+            } else if (items.length > 0) {
+              return items.map((e, i) =>
+                `<p class="ev-required-item"><span class="ev-num">${i+1}</span>${escapeHtml(e)}</p>`
+              ).join("");
+            } else {
+              return (folder.required_evidence || "لم يحدد المطلوب لهذا البند.")
+                .split("\n").filter(l => l.trim())
+                .map(l => `<p class="ev-required-item">${escapeHtml(l.trim())}</p>`)
+                .join("") || `<p>${escapeHtml(folder.required_evidence || "")}</p>`;
+            }
+          })()}
+        </div>
       </details>
       <div class="folder-stats">
         <span class="ok">مناسب: ${folder.suitable || 0}</span>
@@ -1624,4 +2351,217 @@ function formatScore(value) {
 function formatGap(value) {
   const number = Number(value ?? 0);
   return `${number >= 0 ? "+" : ""}${number.toFixed(1)}`;
+}
+
+// ── رفع تقرير الزيارة السابقة ───────────────────────────────────────
+async function readReportPdf() {
+  const input  = document.getElementById("reportPdfInput");
+  const status = document.getElementById("pdfReadStatus");
+  const btn    = document.getElementById("pdfReadBtn");
+  if (!input || !input.files || !input.files[0]) return;
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="pdf-upload-icon">⏳</span> جاري القراءة...';
+  status.textContent = "";
+  status.className = "pdf-read-status";
+
+  try {
+    const payload = new FormData();
+    payload.append("report", input.files[0]);
+    const res = await fetch("/api/v2/parse-report", { method: "POST", body: payload });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "خطأ في القراءة");
+    }
+    const data = await res.json();
+    const scores = data.scores || {};
+    const found  = data.found  || [];
+
+    // تعبئة اسم المدرسة
+    if (data.school_name) {
+      const nameInput = form.querySelector("[name=school_name]");
+      if (nameInput) nameInput.value = data.school_name;
+    }
+
+    // تعيين المرحلة الدراسية تلقائياً
+    if (data.school_level) {
+      const levelSelect = document.getElementById("schoolLevelSelect");
+      if (levelSelect) {
+        levelSelect.value = data.school_level;
+        updateLevelBadge();
+      }
+    }
+
+    // تعبئة درجات المجالات
+    const fieldMap = {
+      school_management: "school_management",
+      teaching_learning: "teaching_learning",
+      learning_outcomes: "learning_outcomes",
+      school_environment: "school_environment",
+    };
+    let filled = 0;
+    for (const [key, fieldName] of Object.entries(fieldMap)) {
+      if (scores[key] !== undefined) {
+        const inp = form.querySelector(`[name=${fieldName}]`);
+        if (inp) { inp.value = scores[key]; filled++; }
+      }
+    }
+
+    const levelLabel = data.school_level ? ` | مرحلة: ${data.school_level}` : "";
+    if (filled > 0) {
+      status.innerHTML = `✅ تم استخراج <strong>${filled}</strong> مجال من التقرير وتعبئتها تلقائيًا${levelLabel}. راجعها قبل الإرسال.`;
+      status.className = "pdf-read-status success";
+    } else {
+      status.innerHTML = "⚠️ لم يُعثر على درجات صريحة في التقرير. أدخل الأرقام يدويًا.";
+      status.className = "pdf-read-status warn";
+    }
+  } catch (e) {
+    status.textContent = "❌ " + e.message;
+    status.className = "pdf-read-status error";
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span class="pdf-upload-icon">📄</span> رفع تقرير الزيارة السابقة';
+    input.value = ""; // reset so same file can be re-selected
+  }
+}
+
+function togglePreviousScores(checkbox) {
+  const group  = document.getElementById("previousScoresGroup");
+  const hidden = document.getElementById("hasPreviousHidden");
+  if (group) group.style.display = checkbox.checked ? "" : "none";
+  if (hidden) hidden.value = checkbox.checked ? "true" : "false";
+}
+
+function updateLevelBadge() {
+  const select = document.getElementById("schoolLevelSelect");
+  const badge  = document.getElementById("v2Badge");
+  if (!select || !badge) return;
+  const counts = { "ثانوي": 43, "متوسط": 49, "ابتدائي": 49 };
+  const level  = select.value;
+  const count  = counts[level] || 43;
+  badge.textContent = `نظام التقييم المدرسي — 4 مجالات رسمية ETEC · ${count} مؤشراً | ${level}`;
+}
+
+function renderV2Result(data) {
+  const existing = document.getElementById("v2ResultContainer");
+  if (existing) existing.remove();
+
+  const a    = data.analysis;
+  const plan = data.plan;
+  const pred = data.prediction;
+  const prog = data.progress;
+
+  const domainBars = a.domain_scores.map(d => `
+    <div class="v2-domain-bar-row">
+      <span class="v2-domain-name">${d.label}</span>
+      <div class="v2-bar-track">
+        <div class="v2-bar-fill ${d.below_threshold ? "below" : ""}" style="width:${d.score}%"></div>
+      </div>
+      <span class="v2-score-num">${d.score}%${d.below_threshold ? " ⚠" : ""}</span>
+    </div>`).join("");
+
+  const targetCards = plan.targets.map(t => {
+    const achieved = asArray(t.achieved_evidence);
+    const missing  = asArray(t.missing_evidence);
+    const total    = achieved.length + missing.length;
+    const pct      = total ? Math.round(achieved.length / total * 100) : 0;
+    const achievedHtml = achieved.map(e =>
+      `<li class="ev-achieved"><span class="ev-check">✅</span>${escapeHtml(e)}</li>`).join("");
+    const missingHtml  = missing.map(e =>
+      `<li class="ev-missing"><span class="ev-check">❌</span>${escapeHtml(e)}</li>`).join("");
+    const checklistHtml = total > 0 ? `
+      <details class="v2-evidence-checklist">
+        <summary>
+          <span class="ev-summary-text">الشواهد: ${achieved.length}/${total} متحقق</span>
+          <div class="ev-mini-bar"><div class="ev-mini-fill" style="width:${pct}%"></div></div>
+        </summary>
+        <ul class="v2-evidence-list">${achievedHtml}${missingHtml}</ul>
+      </details>` : "";
+    return `
+      <div class="v2-target-card">
+        <div class="v2-target-header">
+          <span class="v2-indicator-code">${t.indicator_code}</span>
+          <span>${t.indicator_title}</span>
+        </div>
+        <div class="v2-score-arrow">${t.current_score}% → ${t.target_score}%</div>
+        <div class="v2-target-action">${t.action}</div>
+        ${checklistHtml}
+      </div>`;
+  }).join("");
+
+  let progressHtml = "";
+  if (prog) {
+    const changes = Object.values(prog.domain_changes).map(v => `
+      <div class="v2-domain-bar-row">
+        <span class="v2-domain-name">${v.label}</span>
+        <span class="v2-score-num" style="width:auto;color:${v.delta >= 0 ? "var(--teal)" : "var(--red)"}">
+          ${v.delta >= 0 ? "+" : ""}${v.delta}
+        </span>
+        <span style="font-size:0.8rem;color:var(--muted)">${v.previous}% → ${v.current}% [${v.trend}]</span>
+      </div>`).join("");
+    const flags = (prog.flags || []).map(f =>
+      `<p style="color:var(--amber);font-size:0.83rem">⚠ ${f}</p>`).join("");
+    progressHtml = `<div class="v2-section-title">المقارنة مع الزيارة السابقة</div>${changes}${flags}`;
+  }
+
+  const simHtml = (data.simulation_questions || []).slice(0, 4).map(q => `
+    <div class="v2-target-card" style="border-right-color:var(--blue)">
+      <div class="v2-target-header">
+        <span class="v2-indicator-code" style="background:var(--blue)">${q.indicator_code}</span>
+        <span style="font-size:0.82rem">${q.question}</span>
+      </div>
+    </div>`).join("");
+
+  const container = document.createElement("div");
+  container.id = "v2ResultContainer";
+  container.className = "v2-result-card";
+  container.innerHTML = `
+    <div class="v2-classification-banner">
+      <div>
+        <div class="v2-classification-label">${a.classification_label}</div>
+        <div class="v2-overall-score">الدرجة الكلية: ${a.overall_score}%</div>
+        <div style="font-size:0.8rem;color:var(--muted);margin-top:4px">${a.description}</div>
+        ${data.school_name ? `<div style="font-size:0.82rem;font-weight:600;margin-top:6px">${data.school_name}${data.school_level ? ` · ${data.school_level}` : ""}</div>` : ""}
+      </div>
+      <div style="margin-right:auto;font-size:0.75rem;color:var(--muted);text-align:center">
+        ${data.framework || "ETEC رسمي · 4 مجالات"}
+      </div>
+    </div>
+
+    <div class="v2-section-title">درجات المجالات الأربعة الرسمية</div>
+    ${domainBars}
+    ${progressHtml}
+
+    <div class="v2-section-title">خطة التحسين — ${plan.targets.length} أهداف بمؤشرات ETEC</div>
+    ${targetCards}
+
+    <div class="v2-section-title">أسئلة محاكاة فريق التقويم</div>
+    ${simHtml}
+
+    <div class="v2-section-title">التنبؤ بالزيارة القادمة</div>
+    <div class="v2-prediction-box">
+      <div class="v2-pred-item">
+        <div class="v2-pred-value">${pred.overall_current}%</div>
+        <div class="v2-pred-label">الحالية</div>
+      </div>
+      <div class="v2-pred-item">
+        <div class="v2-pred-value" style="color:var(--teal)">${pred.overall_predicted}%</div>
+        <div class="v2-pred-label">المتوقعة</div>
+      </div>
+      <div class="v2-pred-item">
+        <div class="v2-pred-value" style="color:var(--blue)">${Math.round(pred.confidence * 100)}%</div>
+        <div class="v2-pred-label">مستوى الثقة</div>
+        <div class="v2-confidence-bar">
+          <div class="v2-confidence-fill" style="width:${Math.round(pred.confidence * 100)}%"></div>
+        </div>
+      </div>
+      <div class="v2-pred-item" style="flex:2;text-align:right">
+        <div style="font-size:0.82rem;color:var(--muted)">${pred.confidence_explanation}</div>
+        <div style="font-size:0.78rem;color:var(--muted);margin-top:4px">${pred.caveat}</div>
+      </div>
+    </div>
+  `;
+
+  form.insertAdjacentElement("afterend", container);
+  container.scrollIntoView({ behavior: "smooth", block: "start" });
 }
