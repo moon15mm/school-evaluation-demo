@@ -153,11 +153,14 @@ async def v2_parse_report(
                 if k not in scores:
                     scores[k] = v
 
+        # جمع تشخيص لمساعدة التطوير
+        debug_words = _debug_pdf_words(tmp_path)
         return {
             "school_name": school_name,
             "school_level": school_level,
             "scores": scores,
             "found": list(scores.keys()),
+            "debug_words": debug_words,   # أول 80 كلمة من الصفحة الأولى
         }
     finally:
         tmp_path.unlink(missing_ok=True)
@@ -326,6 +329,23 @@ def _extract_etec_scores_text(pdf_path: Path) -> dict:
                     scores[domain] = round(val, 1)
                     break
     return scores
+
+
+def _debug_pdf_words(pdf_path: Path) -> list:
+    """يُعيد أول 80 كلمة من الـ PDF مع موضعها لمساعدة التشخيص."""
+    try:
+        import pdfplumber
+        with pdfplumber.open(pdf_path) as pdf:
+            if not pdf.pages:
+                return []
+            words = pdf.pages[0].extract_words(x_tolerance=5, y_tolerance=5)
+            return [
+                {"text": w["text"], "x0": round(float(w["x0"]), 1),
+                 "top": round(float(w["top"]), 1)}
+                for w in words[:80]
+            ]
+    except Exception as e:
+        return [{"text": f"ERROR: {e}", "x0": 0, "top": 0}]
 
 
 def _extract_scores_raw_numbers(pdf_path: Path) -> dict:

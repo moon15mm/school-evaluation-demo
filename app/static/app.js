@@ -2412,7 +2412,11 @@ async function readReportPdf() {
       status.innerHTML = `✅ تم استخراج <strong>${filled}</strong> مجال من التقرير وتعبئتها تلقائيًا${levelLabel}. راجعها قبل الإرسال.`;
       status.className = "pdf-read-status success";
     } else {
-      status.innerHTML = "⚠️ لم يُعثر على درجات صريحة في التقرير. أدخل الأرقام يدويًا.";
+      // عرض الكلمات المستخرجة للتشخيص
+      const debugWords = (data.debug_words || []).map(w => w.text).join(" | ");
+      console.warn("PDF debug words:", data.debug_words);
+      status.innerHTML = `⚠️ لم يُعثر على درجات صريحة في التقرير. أدخل الأرقام يدويًا.<br>
+        <small style="color:#888;font-size:0.75rem">الكلمات المستخرجة: ${escapeHtml(debugWords.slice(0,200))}</small>`;
       status.className = "pdf-read-status warn";
     }
   } catch (e) {
